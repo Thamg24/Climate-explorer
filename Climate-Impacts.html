@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Climate Impact Explorer</title>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; overflow: hidden; }
+header { background: linear-gradient(135deg, #1a2a1a, #0d1f2d); padding: 10px 18px; border-bottom: 1px solid #2a3a2a; }
+header h1 { font-size: 1.05rem; font-weight: 700; color: #7dd87d; }
+header p { font-size: 0.7rem; color: #8aaa8a; margin-top: 2px; }
+.layout { display: flex; height: calc(100vh - 50px); }
+.map-panel { position: relative; flex: 1; min-width: 0; }
+#map { position: absolute; inset: 0; }
+.search-bar { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 10; display: flex; gap: 6px; }
+.search-bar input { flex: 1; padding: 9px 13px; border-radius: 8px; border: 1px solid #3a5a3a; background: rgba(10,12,18,0.92); color: #e0e0e0; font-size: 0.83rem; }
+.search-bar input::placeholder { color: #5a8a5a; }
+.search-bar input:focus { outline: none; border-color: #7dd87d; }
+.search-bar button { padding: 9px 14px; border-radius: 8px; border: none; background: #2d6a2d; color: #cfc; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+.search-bar button:hover { background: #3a8a3a; }
+.map-hint { position: absolute; bottom: 30px; left: 12px; z-index: 10; background: rgba(10,12,18,0.82); border: 1px solid #2a3a2a; border-radius: 6px; padding: 5px 10px; font-size: 0.68rem; color: #6a9a6a; pointer-events: none; }
+.info-panel { width: 440px; overflow-y: auto; background: #0f1117; padding: 14px; display: flex; flex-direction: column; gap: 12px; border-left: 1px solid #1a2a1a; }
+.placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px; color: #4a6a4a; text-align: center; gap: 10px; }
+.placeholder .icon { font-size: 2.5rem; }
+.placeholder p { font-size: 0.82rem; line-height: 1.6; max-width: 260px; }
+
+/* Section dividers */
+.section-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #5a8a5a; border-bottom: 1px solid #1a2a1a; padding-bottom: 5px; margin-bottom: 2px; }
+
+/* Location header */
+.lh { background: #1a2a1a; border-radius: 10px; padding: 12px 14px; border: 1px solid #2a3a2a; }
+.lh .badge { display:inline-block; background:#1a3a1a; border:1px solid #2d6a2d; border-radius:20px; padding:2px 10px; font-size:0.65rem; color:#7dd87d; margin-bottom:5px; }
+.lh h2 { font-size:0.92rem; color:#7dd87d; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lh .sub { font-size:0.7rem; color:#8aaa8a; }
+.lh .coords { font-size:0.62rem; color:#4a7a4a; margin-top:3px; }
+
+/* Scenario cards */
+.sg { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.sc { border-radius:10px; padding:11px; border:1px solid; }
+.sc.g { border-color:#2d6a2d; background:#0d1f0d; }
+.sc.r { border-color:#6a1a1a; background:#1f0d0d; }
+.sc h3 { font-size:0.76rem; font-weight:700; }
+.sc.g h3 { color:#7dd87d; }
+.sc.r h3 { color:#d87d7d; }
+.sl { font-size:0.63rem; color:#6a8a6a; margin-bottom:7px; }
+.ytabs { display:flex; gap:5px; margin:5px 0 8px; }
+.yt { padding:2px 9px; border-radius:20px; font-size:0.67rem; font-weight:600; cursor:pointer; border:1px solid; }
+.yt.g { border-color:#3a7a3a; color:#6c6; }
+.yt.g.active { background:#2d6a2d; color:#cfc; }
+.yt.r { border-color:#7a3a3a; color:#c66; }
+.yt.r.active { background:#6a1a1a; color:#fcc; }
+.met { display:flex; align-items:flex-start; gap:6px; margin-bottom:6px; }
+.met .em { font-size:0.85rem; margin-top:1px; flex-shrink:0; }
+.mi { flex:1; }
+.ml { font-size:0.6rem; color:#7a9a7a; }
+.mv { font-size:0.75rem; font-weight:600; }
+.mv.g { color:#9de89d; }
+.mv.r { color:#e89d9d; }
+.bt { height:3px; background:#2a2a2a; border-radius:2px; margin-top:2px; }
+.bf { height:100%; border-radius:2px; }
+.bf.g { background:linear-gradient(90deg,#3a8a3a,#7dd87d); }
+.bf.r { background:linear-gradient(90deg,#8a3a3a,#d87d7d); }
+
+/* Detail box */
+.dbox { background:#0d1a20; border:1px solid #1a3a4a; border-radius:10px; padding:12px 14px; }
+.dbox h3 { font-size:0.76rem; color:#7dccd8; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; }
+.dbox h3 span { font-size:0.63rem; color:#4a8a9a; font-weight:400; }
+.dsec { margin-bottom:10px; }
+.dsec h4 { font-size:0.65rem; color:#5a9aaa; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px; border-bottom:1px solid #1a3a4a; padding-bottom:3px; }
+.seas-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:6px; }
+.seas-cell { background:#0a1820; border-radius:6px; padding:6px 8px; }
+.seas-cell .sc-label { font-size:0.6rem; color:#4a7a8a; margin-bottom:2px; }
+.seas-cell .sc-val { font-size:0.7rem; color:#9dd8e8; line-height:1.4; }
+.dcard { background:#0a1820; border-radius:6px; padding:7px 9px; font-size:0.71rem; color:#9dd8e8; line-height:1.55; margin-bottom:4px; }
+.tags { display:flex; flex-wrap:wrap; gap:4px; }
+.tag { padding:2px 8px; border-radius:4px; font-size:0.63rem; font-weight:600; }
+.tag.hi { background:#3a1010; color:#e88; border:1px solid #6a2020; }
+.tag.md { background:#2a2810; color:#dd8; border:1px solid #5a5010; }
+.tag.lo { background:#103a10; color:#8d8; border:1px solid #206a20; }
+.conf { font-size:0.6rem; padding:1px 5px; border-radius:3px; font-weight:600; margin-left:4px; vertical-align:middle; }
+.conf.hi { background:#1a3a1a; color:#7dd87d; }
+.conf.med { background:#3a3a1a; color:#dd8; }
+
+/* ── TRANSITIONAL RISK ── */
+.tr-section { background:#1a1a2a; border:1px solid #2a2a4a; border-radius:10px; padding:14px; }
+.tr-section h2 { font-size:0.82rem; font-weight:700; color:#a0a0e8; margin-bottom:10px; }
+.tr-dropdowns { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+.tr-dropdowns label { font-size:0.65rem; color:#7a7aaa; display:block; margin-bottom:3px; }
+.tr-dropdowns select { width:100%; padding:7px 9px; border-radius:7px; border:1px solid #3a3a6a; background:#0f0f22; color:#c0c0e8; font-size:0.75rem; cursor:pointer; }
+.tr-dropdowns select:focus { outline:none; border-color:#7d7de8; }
+.tr-card { background:#0d0d20; border-radius:8px; padding:11px 13px; border:1px solid #2a2a4a; margin-bottom:8px; }
+.tr-card h4 { font-size:0.7rem; color:#8888cc; margin-bottom:6px; display:flex; align-items:center; gap:6px; }
+.tr-card p { font-size:0.72rem; color:#b0b0d8; line-height:1.6; }
+.tr-outlook { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+.tr-yr { background:#0d0d20; border-radius:8px; padding:10px 12px; border:1px solid; }
+.tr-yr.y30 { border-color:#3a3a5a; }
+.tr-yr.y50 { border-color:#5a3a5a; }
+.tr-yr h4 { font-size:0.68rem; font-weight:700; margin-bottom:5px; }
+.tr-yr.y30 h4 { color:#8888cc; }
+.tr-yr.y50 h4 { color:#cc88cc; }
+.tr-yr p { font-size:0.7rem; color:#a0a0c8; line-height:1.55; }
+.tr-opp { background:#0d200d; border:1px solid #2a4a2a; border-radius:8px; padding:10px 12px; margin-bottom:8px; }
+.tr-opp h4 { font-size:0.7rem; color:#7dd87d; margin-bottom:6px; }
+.tr-opp p { font-size:0.72rem; color:#9dc89d; line-height:1.6; }
+.tr-urgency { display:flex; align-items:center; gap:8px; background:#0d0d20; border-radius:8px; padding:8px 12px; border:1px solid #2a2a4a; margin-bottom:8px; }
+.tr-urgency .urge-label { font-size:0.65rem; color:#7a7aaa; white-space:nowrap; }
+.urge-bar { flex:1; height:6px; background:#1a1a3a; border-radius:3px; }
+.urge-fill { height:100%; border-radius:3px; }
+.tr-placeholder { text-align:center; color:#4a4a7a; font-size:0.8rem; padding:20px; }
+
+.disc { font-size:0.62rem; color:#4a6a4a; line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌍 Climate Impact Explorer</h1>
+  <p>Physical & Transitional Climate Risk · 2030 & 2050 · RCP 2.6 vs RCP 8.5 · CSIRO/BOM & NIWA data</p>
+</header>
+<div class="layout">
+  <div class="map-panel">
+    <div class="search-bar">
+      <input id="addr" type="text" placeholder="Search a city or address..." />
+      <button onclick="doSearch()">Search</button>
+    </div>
+    <div id="map"></div>
+    <div class="map-hint">📍 Click anywhere · 🇦🇺 🇳🇿 Detailed CSIRO/NIWA data · Select industry or personal profile below</div>
+  </div>
+  <div class="info-panel" id="panel">
+    <div class="placeholder">
+      <div class="icon">🌐</div>
+      <p>Click anywhere on the map or search an address to see physical climate projections.<br><br>Then use the dropdowns below to explore transitional risk by industry or personal profile.</p>
+    </div>
+    <!-- Transitional risk always visible -->
+    <div id="tr-panel"></div>
+  </div>
+</div>
+<script>
+mapboxgl.accessToken = 'pk.eyJ1IjoidGhhbWciLCJhIjoiY21vbWZoZ2E3MG51czJ3b2w0ZjE0emk2biJ9.C4sol22BV5J3FD4MNSBbNg';
+const map = new mapboxgl.Map({ container:'map', style:'mapbox://styles/mapbox/dark-v11', center:[140,-28], zoom:3.2, projection:'globe' });
+map.addControl(new mapboxgl.NavigationControl(),'bottom-right');
+map.addControl(new mapboxgl.ScaleControl(),'bottom-left');
+map.on('style.load',()=>{ map.setFog({ color:'rgb(10,15,25)','high-color':'rgb(20,40,60)','horizon-blend':0.02,'space-color':'rgb(5,8,15)','star-intensity':0.8 }); });
+
+let mkr=null;
+function placePin(lat,lng){ if(mkr) mkr.remove(); const el=document.createElement('div'); el.style.cssText='width:15px;height:15px;background:#7dd87d;border:2.5px solid #fff;border-radius:50%;box-shadow:0 0 10px #7dd87d99;'; mkr=new mapboxgl.Marker({element:el}).setLngLat([lng,lat]).addTo(map); }
+map.on('click',e=>{ placePin(e.lngLat.lat,e.lngLat.lng); select(e.lngLat.lat,e.lngLat.lng,null); });
+document.getElementById('addr').addEventListener('keydown',e=>{ if(e.key==='Enter') doSearch(); });
+
+async function doSearch(){
+  const q=document.getElementById('addr').value.trim(); if(!q) return;
+  try { const r=await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${mapboxgl.accessToken}&limit=1`); const d=await r.json(); if(!d.features?.length){ alert('Not found.'); return; } const [lng,lat]=d.features[0].center; placePin(lat,lng); map.flyTo({center:[lng,lat],zoom:6,duration:1400}); select(lat,lng,d.features[0].place_name); } catch(e){ alert('Search failed.'); }
+}
+
+// ═══════════════════════════════════════════════════
+// TRANSITIONAL RISK DATA
+// ═══════════════════════════════════════════════════
+const INDUSTRY = {
+  '': null,
+  'oil_gas': {
+    label:'Oil & Gas',
+    policy:'Carbon pricing mechanisms (e.g. EU ETS, Australia\'s Safeguard Mechanism) are tightening emissions caps annually. Methane regulations intensifying globally. New exploration permits increasingly restricted or subject to legal challenge. AASB S2/IFRS S2 mandatory climate disclosure now required in many jurisdictions, increasing scrutiny of reserves.',
+    market:'Demand for oil projected to peak by 2030 under IEA Net Zero scenario. Gas may retain role as transition fuel but faces stranded asset risk post-2040. Renewable energy cost curves continue to undercut fossil fuels in power generation. Major institutional investors accelerating divestment.',
+    legal:'Increasing litigation risk from climate attribution science advances. Greenwashing claims rising against companies overstating transition credentials. Directors\' duties challenges in Australia, UK, and Netherlands setting precedents for fiduciary obligations on climate risk.',
+    financial:'Reserve valuations at risk as carbon budgets constrain extraction. Cost of capital rising as ESG screens exclude sector. Insurance for offshore assets increasingly expensive or unavailable. Superannuation funds reducing exposure — members increasingly engaged. Bond markets pricing carbon risk into energy sector debt.',
+    opp:'LNG as transition fuel in Asia (medium-term). Carbon capture and storage investment. Hydrogen production from gas with CCS. Diversification into renewables and low-carbon energy services.',
+    y30:'High regulatory pressure; carbon pricing biting; disclosure obligations active; some demand erosion but still dominant energy source. Stranded asset risk beginning in high-cost fields.',
+    y50:'Fundamental demand destruction under strong mitigation; major stranded asset write-downs; most new extraction financially unviable; sector transformation essential for survival.',
+    urgency: 90
+  },
+  'coal': {
+    label:'Coal Mining',
+    policy:'Coal is the most targeted fossil fuel globally. Phase-out commitments by over 40 countries. Australia\'s Safeguard Mechanism targets largest emitters. Export markets (Japan, South Korea) committing to phase-out by 2030–2050. Thermal coal most exposed; metallurgical coal has longer runway.',
+    market:'Thermal coal demand in steep decline in OECD nations. Asian demand (India, SE Asia) provides near-term buffer but is time-limited. Renewable energy now cheaper than new coal in virtually every market. Steel decarbonisation (green hydrogen DRI) threatens met coal long-term.',
+    legal:'Coal projects face intense legal challenge. Australian courts have upheld scope 3 emissions challenges. International litigation (e.g. Sharma v Minister for Environment) establishing duty of care precedents. Reputational damage from continuing operations high.',
+    financial:'Coal asset values declining; mine closure provisions underfunded at many operations. Financing increasingly unavailable from major banks. Insurance withdrawal accelerating. Superannuation fund divestment accelerating under member pressure. Export revenues at risk as Japan/Korea phase out.',
+    opp:'Mine rehabilitation and land repurposing. Coal communities transition planning. Underground coal gasification research (niche). Workforce skills applicable to mining for critical minerals.',
+    y30:'Thermal coal in accelerating decline; regulatory and financial pressure severe; met coal still viable but under increasing scrutiny; community and workforce transition urgent.',
+    y50:'Thermal coal largely phased out in most markets; met coal under severe pressure from green steel; most operations commercially unviable or socially/legally unsustainable.',
+    urgency: 95
+  },
+  'utilities': {
+    label:'Utilities & Energy',
+    policy:'Renewable energy targets accelerating globally (Australia: 82% renewables by 2030). Capacity market reforms favouring firmed renewables over gas peakers. Distribution network regulations requiring grid modernisation for decentralised energy. Carbon pricing applying to large emitters.',
+    market:'Solar and wind now cheapest form of new electricity generation. Battery storage costs falling rapidly. Distributed energy resources (rooftop solar, EVs, home batteries) disrupting traditional utility business models. Hydrogen economy emerging as long-duration storage solution.',
+    legal:'Greenwashing risk for utilities overstating green credentials. Regulatory compliance risk as emissions standards tighten. Class actions emerging in relation to climate-related outages and infrastructure failure.',
+    financial:'Stranded asset risk for coal and gas-fired generation assets. Significant capital expenditure required for grid modernisation and renewable build-out. New revenue models (virtual power plants, demand response, energy-as-a-service) attracting investor interest. Green bonds growing.',
+    opp:'Renewable energy development at scale. Grid-scale battery and pumped hydro. Green hydrogen production. Virtual power plant aggregation. EV charging infrastructure. Energy efficiency services.',
+    y30:'Massive investment in renewables and grid modernisation underway; coal generation closures accelerating; gas still providing system firming but under pressure; significant transition capex required.',
+    y50:'Near-zero emissions electricity grids in most developed markets; utility business models fundamentally transformed; new revenue from hydrogen, storage, and grid services dominant.',
+    urgency: 70
+  },
+  'transport': {
+    label:'Transport & Logistics',
+    policy:'EV mandates accelerating globally (EU ICE ban 2035; Australia accelerating EV uptake). Sustainable aviation fuel (SAF) mandates emerging. International shipping carbon intensity regulations tightening (IMO 2023). Heavy vehicle emissions standards tightening in major markets.',
+    market:'EV adoption accelerating rapidly — cost parity with ICE vehicles in most segments by 2025–2027. Autonomous and shared mobility disrupting fleet economics. SAF demand creating cost pressures for aviation. Shipping facing high transition costs for zero-carbon fuels (ammonia, methanol, hydrogen).',
+    legal:'Scope 3 emissions disclosure requirements capturing transport emissions of corporate clients. Greenwashing risk on carbon offsetting claims. Supply chain due diligence laws (e.g. EU CSRD) requiring emissions data from logistics providers.',
+    financial:'Fleet electrification capital cost significant but falling. Fuel cost savings from EVs improving payback. Stranded asset risk for ICE vehicle fleets. Carbon costs for aviation and shipping routes rising. Infrastructure investment required (charging, fuelling). Insurance risk changing with EV fire and autonomous vehicle liability.',
+    opp:'EV fleet transition services. Last-mile electric delivery. Rail freight as road freight alternative. Sustainable aviation fuel production. Port electrification infrastructure. Carbon footprint tracking and reporting services for logistics.',
+    y30:'EV transition in full swing for light vehicles; heavy vehicle and aviation transition just beginning; carbon costs rising; clients demanding scope 3 data from logistics providers.',
+    y50:'Largely electrified road transport; zero-carbon shipping and aviation still transitioning; logistics networks fundamentally redesigned around clean energy infrastructure.',
+    urgency: 65
+  },
+  'agriculture': {
+    label:'Agriculture & Food',
+    policy:'Methane reduction commitments (Global Methane Pledge) targeting agriculture. Australia\'s Emissions Reduction Fund incentivising on-farm carbon abatement. EUDR (EU Deforestation Regulation) affecting commodity exporters. Mandatory nature-related disclosure (TNFD) expanding.',
+    market:'Consumer demand shifting toward plant-based and lower-emission proteins. Alternative proteins disrupting traditional livestock markets long-term. Precision fermentation and cellular agriculture emerging. Carbon farming creating new income streams for landholders.',
+    legal:'Scope 3 emissions disclosure requirements capturing agricultural supply chains. Greenwashing risk on sustainability claims. Water rights litigation increasing in water-stressed regions. Nature-related financial risk disclosure (TNFD) creating new reporting obligations.',
+    financial:'Carbon farming credits providing new revenue streams. Water allocation values increasing significantly in southern Australia. Commodity prices affected by climate-related supply disruptions globally. Farm asset values in high-risk regions declining. Crop insurance costs rising significantly with climate volatility.',
+    opp:'Carbon and biodiversity credit generation. Regenerative agriculture premiums. Precision agriculture and AgTech reducing input costs. Plant-based food production. Green hydrogen from agricultural waste. Sustainable forestry.',
+    y30:'Carbon credits becoming mainstream income; sustainable supply chain demands from major buyers; methane reduction obligations biting for large livestock operations; precision ag adoption accelerating.',
+    y50:'Agricultural systems transformed by climate adaptation; alternative proteins mainstream; carbon and nature markets mature; landscape-scale sustainability required for market access.',
+    urgency: 55
+  },
+  'construction': {
+    label:'Construction & Infrastructure',
+    policy:'Embodied carbon regulations tightening globally — EU taxonomy, UK net zero buildings strategy. Green building codes mandating higher performance. Infrastructure sustainability ratings (ISCA in Australia) increasingly required for government contracts. Climate risk disclosure on infrastructure assets.',
+    market:'Green building premiums commanding 5–15% higher rents and valuations. Stranded asset risk for non-compliant commercial buildings. Demand for net zero buildings accelerating from corporate tenants. Retrofit market growing significantly.',
+    legal:'Climate risk disclosure now mandatory for publicly listed infrastructure assets. Directors\' liability exposure for failing to account for physical and transitional climate risk in asset valuations. Building performance standards creating legal obligations.',
+    financial:'Green bonds and sustainability-linked loans offering preferential financing for certified green assets. Brown discount increasingly applied to non-compliant assets in valuations. NABERS and Green Star ratings affecting asset values and loan covenants. Infrastructure funds screening out high-carbon assets.',
+    opp:'Net zero building design and retrofit. Low-carbon materials (mass timber, green steel, low-carbon concrete). Climate-resilient infrastructure design. Renewable energy integration in buildings. EV charging infrastructure. Green finance advisory.',
+    y30:'Green building requirements mainstream; embodied carbon limits in building codes; climate risk required in infrastructure due diligence; retrofit market booming; brown discount visible in asset valuations.',
+    y50:'Net zero buildings standard; high-carbon assets stranded or requiring full retrofit; climate-resilient design mandatory; circular economy principles embedded in construction.',
+    urgency: 60
+  },
+  'financial': {
+    label:'Financial Services',
+    policy:'TCFD (Task Force on Climate-related Financial Disclosures) now mandatory in Australia (AASB S2), NZ, UK, EU, and others. APRA CPS 229 requiring climate risk integration into prudential framework. Central banks integrating climate risk into financial stability assessments. Basel IV considerations for climate risk in capital requirements.',
+    market:'ESG integration now mainstream in investment management. Green bond market exceeding USD $500bn annually. Transition finance products growing rapidly. Carbon markets scaling. Climate risk increasingly priced into credit assessments and loan covenants.',
+    legal:'Directors\' duties and fiduciary obligations on climate risk well-established in case law. Class action risk for inadequate climate risk disclosure. Greenwashing enforcement accelerating (ASIC in Australia; SEC in US; FCA in UK). Prudential liability for banks with concentrated fossil fuel exposure.',
+    financial:'Stranded asset exposure in loan books and investment portfolios. Climate Value at Risk becoming standard metric. Counterparty risk assessment now requires climate risk scoring. Reinsurance costs rising, affecting primary insurance pricing. Property valuations incorporating flood and fire risk in affected markets.',
+    opp:'Climate risk advisory services. Transition finance and green bond issuance. Carbon market trading and advisory. Climate risk data and analytics. Blended finance for emerging market climate projects. Sustainability-linked lending.',
+    y30:'Mandatory climate risk disclosure fully operational; APRA supervising banks on climate risk; ESG integration standard practice; stranded asset assessment required in credit underwriting; carbon markets liquid.',
+    y50:'Climate risk fully integrated into all financial products and pricing; transition finance dominant; fossil fuel finance largely ceased; financial system aligned with Paris Agreement.',
+    urgency: 75
+  },
+  'insurance': {
+    label:'Insurance',
+    policy:'APRA CPS 229 and APRA SPG 229 requiring insurers to identify, assess, and manage climate risk. Mandatory climate disclosure (AASB S2) applying to large insurers. Regulatory pressure to maintain affordable home insurance in disaster-prone regions — potential government intervention.',
+    market:'Reinsurance costs rising 10–30% annually in climate-exposed markets. Some insurers withdrawing from high-risk regions (north Queensland, bushfire zones). Parametric insurance growing. Flood, cyclone, and wildfire models being rapidly revised upward. Insurance protection gap widening in vulnerable communities.',
+    legal:'Greenwashing risk on ESG-labelled insurance products. Class action exposure if climate risk not adequately disclosed in policy terms or adequately priced. Regulatory risk if withdrawing coverage deemed discriminatory.',
+    financial:'Underwriting losses accelerating in catastrophe lines. Investment portfolio transition risk (fossil fuel holdings). Reinsurance availability and cost increasingly constrained. Property insurance affordability becoming systemic risk in some markets — potential for government intervention. Life insurance mortality assumptions incorporating climate health impacts.',
+    opp:'Parametric and index-based insurance products. Climate risk modelling services. Transition risk insurance (directors\' liability, greenwashing). Nature-based solutions insurance. Cyber risk from climate-driven infrastructure disruption.',
+    y30:'Reinsurance costs passed through to primary insurers; some markets experiencing withdrawal; government schemes emerging; climate risk modelling central to underwriting; mandatory disclosure operational.',
+    y50:'Insurance market fundamentally restructured; government-backed risk pools likely for extreme risk areas; private market retreating from highest-risk zones; new products for transition risk dominant.',
+    urgency: 80
+  },
+  'manufacturing': {
+    label:'Manufacturing',
+    policy:'Carbon Border Adjustment Mechanisms (CBAM) — EU CBAM now live, applying to steel, aluminium, cement, fertilisers, hydrogen. Australia\'s Safeguard Mechanism requiring emissions reductions from large manufacturers. Supply chain due diligence laws requiring scope 3 disclosure.',
+    market:'Green premiums emerging for low-carbon manufactured goods (green steel, low-carbon aluminium). Industrial decarbonisation technology (green hydrogen, electrification of heat) rapidly maturing. Supply chain disruptions from physical climate risk reshaping sourcing strategies.',
+    legal:'Scope 3 emissions disclosure requirements now apply to large corporations, forcing engagement from manufacturers in their supply chains. EU CSRD and Australian mandatory disclosure creating reporting obligations. CBAM creating compliance obligations for exports to EU.',
+    financial:'CBAM adding cost for carbon-intensive exports to EU. Capital investment required for process decarbonisation. Green hydrogen and renewable electricity inputs required — currently higher cost. First movers in green steel/aluminium attracting premium pricing and access to green finance.',
+    opp:'Green steel and aluminium production (Australia has significant competitive advantage with renewable energy). Industrial electrification solutions. Circular economy and waste valorisation. Low-carbon product certification and premiums.',
+    y30:'EU CBAM fully operational affecting exports; Australian Safeguard Mechanism requiring annual emissions reductions; green product premiums emerging; capital investment in decarbonisation accelerating.',
+    y50:'Low-carbon manufacturing mainstream; carbon-intensive production commercially unviable in most markets; circular economy integrated into manufacturing systems; green hydrogen widely used in industrial processes.',
+    urgency: 65
+  },
+  'tourism': {
+    label:'Tourism & Hospitality',
+    policy:'Aviation sustainability obligations (SAF mandates, carbon offsets). Tourism operators in sensitive ecosystems facing increased regulatory scrutiny. Nature-based tourism sites affected by physical climate impacts (Great Barrier Reef, Alpine resorts, glaciers).',
+    market:'Consumer demand shifting toward sustainable tourism. Flygskam (flight shame) movement affecting long-haul aviation demand in some markets. Ecotourism and regenerative travel growing. Climate-related destination risk affecting visitor flows (reef bleaching, bushfires, extreme heat).',
+    legal:'Greenwashing risk on sustainability claims. Operators at iconic climate-vulnerable sites (GBR, alpine, glacier) facing reputational and legal exposure as conditions deteriorate.',
+    financial:'Physical climate risk reducing appeal of key destinations — GBR bleaching events, bushfire smoke, extreme heat. Ski industry asset values declining. Insurance costs for climate-exposed facilities rising. SAF mandates increasing aviation costs. Carbon offset requirements adding to travel costs.',
+    opp:'Sustainable tourism certification premiums. Domestic tourism growth as international travel costs rise. Nature-based tourism in climate-resilient locations. Climate storytelling tourism. Carbon neutral accommodation and experience products.',
+    y30:'Iconic destinations (GBR, alpine snow) visibly impacted; sustainable travel demand mainstream; aviation carbon costs rising; extreme heat affecting tropical destinations in peak season.',
+    y50:'Major destination transformation — some currently iconic sites degraded; climate-resilient destinations growing; sustainable tourism standard expectation; aviation decarbonisation under way.',
+    urgency: 60
+  },
+  'real_estate': {
+    label:'Real Estate',
+    policy:'Climate risk disclosure in property transactions increasingly required. Building performance standards tightening — NABERS minimum ratings expected in commercial leases. Flood mapping and planning overlays expanding. APRA guidance requiring banks to assess climate risk in mortgage portfolios.',
+    market:'Brown discount increasingly visible — energy-inefficient or climate-exposed properties commanding lower prices and rents. Green premium for high-rated commercial buildings well established (5–15%). Residential property in high-risk zones (flood, fire, coastal) experiencing value impacts and insurance withdrawal.',
+    legal:'Vendor disclosure obligations for known climate risks expanding. Lender liability exposure if climate risk not assessed in mortgage underwriting. Class actions against developers for building in high-risk zones. Local council liability for development approvals in risk areas.',
+    financial:'Property in high-risk zones: insurance unaffordable, mortgage availability declining, values falling. Commercial property: NABERS ratings affecting valuations and leasing. REITs required to disclose climate risk under AASB S2. Green finance preferential rates for high-rated buildings. Stranded asset risk for non-compliant commercial stock.',
+    opp:'Green building retrofit services. Climate-resilient design. Relocation advisory for at-risk properties. Green-rated residential development. Real estate climate risk assessment services.',
+    y30:'Insurance withdrawal from highest-risk areas visible; mortgage lending restrictions emerging; commercial green premiums / brown discounts firmly established; mandatory disclosure operational for listed REITs.',
+    y50:'Significant property value redistribution — high-risk areas severely impacted; climate-resilient locations attracting premium; entire suburbs in some coastal/flood zones potentially uninsurable and unmortgageable.',
+    urgency: 70
+  },
+  'retail': {
+    label:'Retail & Consumer',
+    policy:'Extended producer responsibility schemes expanding. Mandatory product sustainability disclosure (EU Ecodesign Regulation, Green Claims Directive). Plastic packaging bans and single-use restrictions. Supply chain due diligence laws requiring scope 3 disclosure.',
+    market:'Consumer demand for sustainable products growing, particularly among younger demographics. Greenwashing backlash increasing — consumers demanding credible sustainability credentials. Fast fashion under intense scrutiny. Food waste reduction expectations. Physical climate risk disrupting supply chains and commodity prices.',
+    legal:'EU Green Claims Directive cracking down on vague sustainability claims. ACCC greenwashing enforcement accelerating in Australia. Supply chain transparency laws (German LkSG, EU CSRD) requiring disclosure of environmental impacts in supply chains.',
+    financial:'Supply chain climate disruption increasing input costs and commodity price volatility. Carbon costs flowing through to consumer goods prices. Greenwashing enforcement creating legal liability. ESG investor pressure on retailers with high-carbon supply chains. Transition to circular models requiring significant business model investment.',
+    opp:'Sustainable product lines and certification premiums. Circular economy and recommerce platforms. Local and resilient supply chain development. Scope 3 supply chain analytics services. Consumer sustainability education and engagement.',
+    y30:'Greenwashing enforcement active; sustainable product demand mainstream; supply chain transparency required; circular economy models gaining market share; carbon costs visible in pricing.',
+    y50:'Circular economy dominant; high-carbon supply chains commercially and legally untenable; sustainable consumption mainstream; physical supply chain disruption reshaping sourcing geography.',
+    urgency: 50
+  },
+};
+
+const PERSONAL = {
+  '': null,
+  'homeowner': {
+    label:'Homeowner',
+    policy:'Mandatory climate risk disclosure in property conveyancing expanding. Building codes requiring higher energy efficiency and climate resilience. Local councils expanding flood and fire overlays affecting development rights and property use.',
+    market:'Property values in high flood, fire, and coastal inundation zones facing growing downward pressure. Energy-efficient homes commanding premiums. Green mortgage products (lower rates for high-rated homes) becoming available.',
+    legal:'Vendor disclosure obligations for known climate risks expanding — check what must be disclosed in your jurisdiction. Body corporate obligations for strata buildings in risk zones.',
+    financial:'Home insurance: premiums rising 10–50% in high-risk areas; some insurers withdrawing entirely from north Queensland and bushfire zones. Mortgage availability declining in highest-risk zones. Property values in vulnerable areas facing long-term decline. Energy bill savings from solar/battery offsetting mortgage. Renovating to improve energy rating increases property value and Green mortgage eligibility.',
+    opp:'Solar, battery, and EV integration reducing energy bills. Green mortgage products for energy-efficient homes. Property value premium for high NABERS/NatHERS ratings. Opportunity to relocate to climate-resilient areas before market adjusts.',
+    y30:'Insurance costs rising significantly in risk zones; green mortgage products widely available; energy-efficient home values diverging from inefficient stock; climate risk disclosure in property sales normalised.',
+    y50:'Insurance and mortgage markets fundamentally restructured around climate risk; significant property value divergence between resilient and vulnerable locations; some zones potentially unmortgageable.',
+    urgency: 70
+  },
+  'renter': {
+    label:'Renter',
+    policy:'Minimum energy efficiency standards for rental properties expanding in Australia and NZ (e.g. ACT minimum standards, Victorian rental standards). Climate risk not currently required to be disclosed to renters in most jurisdictions — this is changing.',
+    market:'Rental demand in climate-resilient, well-connected urban areas rising. Energy-efficient rental properties commanding premiums and experiencing lower vacancy. Extreme heat events disproportionately affecting renters in older, poorly insulated stock.',
+    legal:'Emerging right to request energy efficiency improvements in rental properties. Renters have limited leverage but growing advocacy around climate risk in rental housing.',
+    financial:'Energy bills: renters in older, inefficient stock facing rising energy costs. Limited ability to invest in on-site solar or batteries. Location risk: renters more mobile than owners, able to relocate from high-risk areas more easily. Reduced exposure to property value risk, but exposed to affordability pressure as landlords pass insurance costs through.',
+    opp:'Greater mobility to move away from high-risk areas as climate impacts emerge. Lower direct exposure to stranded asset risk vs homeowners in vulnerable zones. Opportunity to advocate for stronger rental standards.',
+    y30:'Energy costs rising for inefficient rental stock; minimum efficiency standards expanding; some renters in high-risk areas facing displacement as landlords exit the market.',
+    y50:'Rental market restructured around energy performance and climate resilience; significant disruption in high-risk rental markets; energy-efficient properties standard expectation.',
+    urgency: 45
+  },
+  'investor': {
+    label:'Investor / Superannuation',
+    policy:'AASB S2 / IFRS S2 mandatory climate disclosure now required for large listed entities — giving investors better data. APRA supervising superannuation funds on climate risk integration. ASIC greenwashing enforcement protecting investors from misleading ESG claims.',
+    market:'ESG integration now mainstream in institutional investment. Fossil fuel divestment accelerating. Green bonds, sustainability-linked bonds, and transition bonds growing rapidly. Carbon markets scaling as an asset class. Renewable energy infrastructure attracting significant institutional capital.',
+    legal:'Fiduciary duty now clearly encompasses climate risk consideration — case law established in Australia, UK, and Netherlands. Greenwashing class action risk for funds making misleading ESG claims. Directors\' duties on climate risk well established.',
+    financial:'Portfolio stranded asset risk: fossil fuel holdings face declining valuations. Physical risk: property and infrastructure assets in high-risk locations face value impairment. Transition risk: carbon-intensive sectors face margin compression and capital cost increases. Opportunity: clean energy, clean tech, and transition finance generating strong returns. Superannuation: members increasingly able to select climate-aware investment options.',
+    opp:'Clean energy infrastructure (solar, wind, storage, hydrogen) offering attractive long-term returns. Green bonds and sustainability-linked loans. Carbon credits as asset class. Climate risk analytics and data services. Impact investing in climate solutions.',
+    y30:'Mandatory disclosure providing better climate risk data; ESG screening standard; fossil fuel assets facing write-downs; clean energy infrastructure a core institutional asset class; super funds required to disclose climate risk.',
+    y50:'Climate risk fully priced into all asset classes; fossil fuel investments largely written off; clean energy and transition assets dominant in institutional portfolios; carbon markets mature and liquid.',
+    urgency: 75
+  },
+  'farmer': {
+    label:'Farmer / Rural',
+    policy:'Australia\'s Emissions Reduction Fund providing carbon credit income for on-farm abatement. Vegetation clearing regulations tightening. Mandatory nature reporting (TNFD) beginning to affect large agribusiness buyers. Water allocation frameworks under increasing pressure in the Murray-Darling.',
+    market:'Carbon farming credits providing significant new income potential. Sustainable supply chain demands from major food companies creating both pressure and premium opportunity. Commodity price volatility increasing with climate-related global supply disruptions.',
+    legal:'Water rights disputes intensifying in Murray-Darling. Vegetation clearing regulations creating compliance obligations. Scope 3 disclosure requirements from large food companies flowing down supply chains.',
+    financial:'Crop insurance costs rising significantly. Water allocation values increasing (benefit for existing holders; cost for new entrants). Carbon credit income growing. Farm asset values in highest climate-risk zones (northern Murray-Darling, south-west WA) under pressure. Succession and financing increasingly requiring climate risk consideration from lenders.',
+    opp:'Carbon and biodiversity credit generation on farm. Regenerative agriculture premium markets. Agtech and precision agriculture reducing input costs. Diversification into carbon forestry. Renewable energy generation on farm (solar, wind) for income and energy cost reduction.',
+    y30:'Carbon farming mainstream income stream; sustainable supply chain requirements from major buyers; crop insurance costs rising; water allocation values increasing; precision agriculture essential for margins.',
+    y50:'Agricultural systems transformed; carbon and nature markets central to farm economics; water security the defining constraint in southern Australia; landscape-scale sustainability required for market access.',
+    urgency: 65
+  },
+  'small_biz': {
+    label:'Small Business Owner',
+    policy:'Scope 3 supply chain disclosure requirements from large corporate clients beginning to flow down to small businesses. Green procurement policies by government and large corporates creating both barrier and opportunity. Energy efficiency incentives and grants available.',
+    market:'Growing consumer and corporate demand for sustainable products and services. Greenwashing backlash — sustainability claims must be credible and evidenced. Physical climate risk creating business continuity challenges (extreme heat, flooding, fire, supply disruption).',
+    legal:'ACCC greenwashing enforcement applying to businesses of all sizes. If supplying large corporates, expect increasing contractual requirements around emissions disclosure and reduction. Consumer law obligations around sustainability claims.',
+    financial:'Energy costs: significant savings available from solar and battery investment. Supply chain disruption costs rising with climate events. Business insurance costs rising, particularly for climate-exposed locations. Green finance products (sustainability-linked loans) available for qualifying businesses. Climate risk increasingly assessed in business loan applications.',
+    opp:'Sustainable product and service differentiation. Green supply chain certification and premium pricing. Energy cost reduction through on-site renewables. Climate adaptation services for other businesses. Government green procurement opportunities.',
+    y30:'Corporate clients requiring sustainability data from suppliers; energy cost savings from renewables reducing overheads; climate events creating business continuity risks; green certification providing market differentiation.',
+    y50:'Sustainability fully embedded in business operations; unsustainable businesses losing access to supply chains and finance; climate resilience a core business capability.',
+    urgency: 50
+  },
+  'transition_worker': {
+    label:'Employee in High-Transition Industry',
+    policy:'Australia\'s Net Zero Authority established to coordinate workforce transition. Skills and Training Incentives for workers in transitioning industries. Just Transition frameworks emerging in coal-dependent communities (Hunter Valley, Latrobe Valley). Retraining programs expanding.',
+    market:'Coal and fossil fuel sector employment declining; renewable energy employment growing rapidly. New green economy jobs in solar, wind, battery storage, green hydrogen, and grid management. Many fossil fuel skills transferable to renewables and mining for critical minerals.',
+    legal:'Workplace health and safety obligations extend to transition planning. Redundancy entitlements and consultation requirements apply to workforce restructuring. Just Transition principles increasingly embedded in industry policy.',
+    financial:'Job security risk in declining industries. Retraining investment provides medium-term protection. Wage premium in renewable energy sector for skilled workers. Superannuation exposure if concentrated in employer\'s declining sector stock. Regional property values affected if local industry declines.',
+    opp:'Significant skills transferability from fossil fuels to renewables and critical minerals. Electricians, engineers, and project managers in high demand across clean energy sector. Regional clean energy hubs (e.g. Hunter Valley hydrogen, Latrobe Valley battery minerals) creating local employment.',
+    y30:'Fossil fuel workforce decline accelerating; significant retraining programs available; renewable energy workforce growing; critical minerals mining expanding; regional transition support programs active.',
+    y50:'Fossil fuel industry largely transitioned; clean energy workforce dominant; workers who retrained early in strong position; regional economies restructured around clean industries.',
+    urgency: 70
+  },
+  'retiree': {
+    label:'Retiree',
+    policy:'Superannuation fund mandatory climate risk disclosure (APRA SPS 530) providing better information for retirement planning. Age pension assets (own home) not exposed to means test — but physical risk affects livability and value.',
+    market:'Property values in climate-exposed locations (coastal, fire-prone, flood) facing long-term decline. Superannuation funds increasingly screening for climate risk. Health costs rising with climate-related disease burden (heat stress, air quality, mental health).',
+    legal:'Limited direct legal exposure, but superannuation fund obligations on climate risk protect members\' retirement savings. Estate planning should consider climate risk to property assets.',
+    financial:'Superannuation: climate risk now considered by fund managers; impact on retirement income from stranded fossil fuel assets; opportunity to select climate-aware options. Property: retirement nest egg at risk if located in high physical risk area — insurance costs rising, values under pressure. Health: climate-related health costs rising (heat stress, air quality, vector-borne disease). Energy: fixed income households vulnerable to energy price rises — rooftop solar provides protection.',
+    opp:'Downsizing from climate-exposed property to resilient location while market still supports prices. Superannuation option selection in climate-aware funds. Energy bill protection via solar and battery investment.',
+    y30:'Superannuation climate risk disclosure active; property market divergence between resilient and exposed areas visible; health system under increasing climate stress; energy costs manageable with solar.',
+    y50:'Significant property market restructuring; some retirement assets in high-risk locations severely impacted; superannuation returns affected by climate transition; health system under sustained climate pressure.',
+    urgency: 60
+  },
+  'consumer': {
+    label:'General Consumer',
+    policy:'Carbon pricing flowing through to consumer goods prices. Mandatory green claims standards (EU, Australia) reducing greenwashing. Single-use plastics bans. Energy efficiency labels strengthening.',
+    market:'Sustainable product options growing and becoming more affordable. Electric vehicles reaching price parity with ICE vehicles. Plant-based food becoming mainstream. Energy costs volatile — rooftop solar and batteries providing households with cost protection.',
+    legal:'Consumer protection laws applying to green claims — credible sustainability credentials increasingly required from brands.',
+    financial:'Energy bills: households with solar and batteries significantly protected from energy price rises. Food prices: climate-related supply disruptions driving food inflation. Transport: EV total cost of ownership now lower than petrol in most use cases. Superannuation: members increasingly able to choose climate-aware investment options. Home insurance: rising in risk-exposed areas regardless of ownership status.',
+    opp:'EV adoption reducing transport costs. Solar and battery investment reducing energy bills. Sustainable consumption reducing environmental footprint. Plant-based diet shifts reducing food-related emissions and often costs.',
+    y30:'Energy transition visible in everyday life — EVs, solar, heat pumps mainstream; sustainable products standard expectation; food prices affected by climate disruption; carbon cost visible in some goods.',
+    y50:'Low-carbon lifestyles standard; clean energy dominant; sustainable consumption fully normalised; significant shift in how households interact with energy, transport, and food systems.',
+    urgency: 40
+  },
+};
+
+// Render transitional risk panel
+function renderTR(){
+  const iKey=document.getElementById('tr-ind').value;
+  const pKey=document.getElementById('tr-per').value;
+  const ind=INDUSTRY[iKey];
+  const per=PERSONAL[pKey];
+
+  const container=document.getElementById('tr-content');
+  if(!ind&&!per){ container.innerHTML=`<div class="tr-placeholder">Select an industry or personal profile above to explore transitional climate risk.</div>`; return; }
+
+  let html='';
+
+  function block(d,title){
+    const urgW=Math.min(100,Math.max(0,d.urgency));
+    const urgColor=d.urgency>=80?'#e87d7d':d.urgency>=60?'#e8c87d':'#7dd87d';
+    html+=`
+    <div style="margin-bottom:10px">
+      <div style="font-size:0.72rem;font-weight:700;color:#a0a0e8;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #2a2a4a">
+        ${title}
+      </div>
+      <div class="tr-urgency">
+        <div class="urge-label">Transition urgency</div>
+        <div class="urge-bar"><div class="urge-fill" style="width:${urgW}%;background:${urgColor}"></div></div>
+        <div style="font-size:0.65rem;color:${urgColor};font-weight:700;white-space:nowrap">${urgW>=80?'Very High':urgW>=60?'High':urgW>=40?'Moderate':'Low'}</div>
+      </div>
+      <div class="tr-card"><h4>📋 Policy & Regulation Risk</h4><p>${d.policy}</p></div>
+      <div class="tr-card"><h4>📉 Market & Technology Risk</h4><p>${d.market}</p></div>
+      <div class="tr-card"><h4>⚖️ Legal & Reputational Risk</h4><p>${d.legal}</p></div>
+      <div class="tr-card"><h4>💰 Financial & Investment Impact</h4><p>${d.financial}</p></div>
+      <div class="tr-opp"><h4>🌱 Opportunities</h4><p>${d.opp}</p></div>
+      <div class="tr-outlook">
+        <div class="tr-yr y30"><h4>📅 By 2030</h4><p>${d.y30}</p></div>
+        <div class="tr-yr y50"><h4>📅 By 2050</h4><p>${d.y50}</p></div>
+      </div>
+    </div>`;
+  }
+
+  if(ind) block(ind, `🏭 Industry: ${ind.label}`);
+  if(per) block(per, `👤 Personal: ${per.label}`);
+
+  container.innerHTML=html;
+}
+
+// ─── Physical risk data (abbreviated — full dataset from previous version) ───
+const AUS=[
+  {id:'monsoonal_north',name:'Monsoonal North',src:'CSIRO/BOM 2015',cities:'Darwin, Katherine, Broome, Kimberley',bb:[-20,-10,122,140],rcp26:{'2030':{t:'+0.6–1.0°C',h:'+10–20 days >35°C',p:'Uncertain; wet season intensity ↑',s:'6–18cm',w:'High (existing baseline)',x:'Moderate – cyclone intensity ↑'},'2050':{t:'+0.8–1.4°C',h:'+20–35 days >35°C',p:'Wet season more intense; dry season little change',s:'10–25cm',w:'High',x:'High – fewer but stronger cyclones'}},rcp85:{'2030':{t:'+0.9–1.3°C',h:'+20–30 days >35°C',p:'Uncertain; more intense wet events',s:'7–19cm',w:'High',x:'High – cyclone intensification'},'2050':{t:'+2.0–3.2°C',h:'+50–100 days >35°C',p:'Wet season intensity ↑↑; dry season drying likely',s:'14–38cm',w:'Very High',x:'Very High – extreme heat index, cyclone risk'}},conf:{temp:'Very High',rain:'Low–Medium',fire:'High',slr:'Very High'},sea:{sum:'Extreme wet season rainfall; dangerous heat baseline',aut:'Late wet season; high fire danger onset',win:'Dry season hotter; reduced cool nights',spr:'Fire season peak; early storm season'},water:'Wet-season flooding increases; saltwater intrusion into coastal wetlands; Top End groundwater variable',agri:'Pastoral grazing stressed; mango and tropical horticulture impacted by heat extremes',risks:[['Extreme heat (>40°C days)','hi'],['Cyclone intensification','hi'],['Saltwater intrusion','hi'],['Pastoral industry viability','hi']]},
+  {id:'wet_tropics',name:'Wet Tropics & Cape York',src:'CSIRO/BOM 2015',cities:'Cairns, Townsville, Cape York',bb:[-20,-10,140,155],rcp26:{'2030':{t:'+0.5–1.0°C',h:'+15–25 days >35°C',p:'Wet season intensity ↑; annual total uncertain',s:'6–18cm',w:'Moderate',x:'High – GBR bleaching, cyclone intensity ↑'},'2050':{t:'+0.8–1.5°C',h:'+30–50 days >35°C',p:'Wet season more intense; dry season drier',s:'10–24cm',w:'Moderate–High',x:'High – regular mass bleaching events'}},rcp85:{'2030':{t:'+0.9–1.4°C',h:'+25–40 days >35°C',p:'Wet season intensity ↑; drier winters',s:'7–19cm',w:'High',x:'Very High – GBR at severe risk'},'2050':{t:'+2.2–3.5°C',h:'+70–110 days >35°C',p:'Extreme wet events; −10–15% dry season',s:'14–38cm',w:'Very High',x:'Extreme – GBR near total bleaching annually'}},conf:{temp:'Very High',rain:'Medium',fire:'Medium',slr:'Very High'},sea:{sum:'More intense cyclones; flooding; dangerous heat multiply',aut:'Extended wet season; humidity stress',win:'Drier; fire risk inland',spr:'Early storm season; bleaching risk highest'},water:'Reef runoff increases; Cairns water supply stressed in dry years',agri:'Sugarcane heat stress; banana crop losses; tropical fruit disrupted',risks:[['Great Barrier Reef bleaching','hi'],['Cyclone intensification','hi'],['Extreme heat days','hi'],['Coastal inundation','hi']]},
+  {id:'rangelands',name:'Rangelands (Central & NW)',src:'CSIRO/BOM 2015',cities:'Alice Springs, Mount Isa, Newman, Longreach',bb:[-30,-20,115,145],rcp26:{'2030':{t:'+0.6–1.1°C',h:'+20–35 days >35°C',p:'Uncertain; slight drying in southern rangelands',s:'N/A (inland)',w:'High (existing)',x:'Moderate – drought frequency ↑'},'2050':{t:'+0.9–1.5°C',h:'+40–60 days >35°C',p:'Southern −5–10%; north uncertain',s:'N/A (inland)',w:'High',x:'High – prolonged droughts more frequent'}},rcp85:{'2030':{t:'+1.0–1.5°C',h:'+35–50 days >35°C',p:'Drying in south; uncertain in north',s:'N/A (inland)',w:'Very High',x:'High – severe drought risk'},'2050':{t:'+2.5–4.0°C',h:'+80–130 days >35°C',p:'Southern −15–25%; extreme heat suppresses rainfall',s:'N/A (inland)',w:'Extreme',x:'Very High – near-permanent drought in south'}},conf:{temp:'Very High',rain:'Low–Medium',fire:'High',slr:'N/A'},sea:{sum:'Extreme heat; 48°C+ events; fire danger extreme',aut:'Rapidly drying; dust storms',win:'Warmer nights; shorter cool season',spr:'Severe fire weather; intense rainfall when it occurs'},water:'Artesian basin under stress; pastoral water points failing',agri:'Extensive pastoralism stressed; carrying capacity declining',risks:[['Extreme heat (outdoor work safety)','hi'],['Prolonged drought','hi'],['Pastoral industry collapse','hi'],['Flash flooding intensity','md']]},
+  {id:'murray_darling',name:'Murray–Darling Basin',src:'CSIRO/BOM 2015',cities:'Albury, Mildura, Dubbo, Wagga Wagga',bb:[-37,-26,138,149],rcp26:{'2030':{t:'+0.6–1.0°C',h:'+15–25 days >38°C',p:'Winter/spring −5–10%; annual −3–8%',s:'N/A (inland)',w:'High',x:'High – drought duration ↑'},'2050':{t:'+0.9–1.5°C',h:'+25–45 days >38°C',p:'Winter/spring −8–15%; river flows −10–25%',s:'N/A (inland)',w:'Very High',x:'High – multi-year droughts more common'}},rcp85:{'2030':{t:'+1.0–1.5°C',h:'+25–40 days >38°C',p:'Winter/spring −8–15%; annual −5–12%',s:'N/A (inland)',w:'Very High',x:'Very High – compound drought/heat'},'2050':{t:'+2.5–3.8°C',h:'+60–90 days >38°C',p:'Winter/spring −15–30%; river flows −20–45%',s:'N/A (inland)',w:'Extreme',x:'Extreme – permanent drought conditions in south'}},conf:{temp:'Very High',rain:'High',fire:'High',slr:'N/A'},sea:{sum:'Extreme heat; crops fail without irrigation; fire risk extreme',aut:'Dry; rapid fire spread',win:'Critical winter rainfall declining — key driver of river flows',spr:'Hot dry; reduced snowmelt; fire season start'},water:'River flows −20 to −45% by 2050 under RCP8.5; over-allocation critical; irrigation entitlements at risk',agri:'Cotton, rice, citrus, stone fruit, almonds, wine grapes severely stressed',risks:[['River flow decline (−20 to −45%)','hi'],['Irrigation water availability','hi'],['Food production security','hi'],['Extreme drought frequency','hi']]},
+  {id:'east_coast',name:'Eastern Seaboard (NSW/SE QLD)',src:'CSIRO/BOM 2015',cities:'Sydney, Newcastle, Brisbane, Gold Coast',bb:[-38,-26,149,154],rcp26:{'2030':{t:'+0.5–1.0°C',h:'+10–18 days >35°C',p:'High variability; extreme events +10–15% intensity',s:'7–19cm',w:'High',x:'Moderate–High – flash flooding, fire'},'2050':{t:'+0.9–1.5°C',h:'+20–35 days >35°C',p:'Annual −3–10%; summer drier; extreme rain ↑',s:'11–28cm',w:'Very High',x:'High – Black Summer-scale fires more frequent'}},rcp85:{'2030':{t:'+1.0–1.5°C',h:'+18–30 days >35°C',p:'Annual −5–12%; extreme events more intense',s:'8–22cm',w:'Very High',x:'High – compound heatwave/fire/flood'},'2050':{t:'+2.5–3.8°C',h:'+50–80 days >35°C',p:'Annual −10–20%; flood–drought cycle intensifying',s:'15–40cm',w:'Extreme',x:'Very High – multiple compound extremes annually'}},conf:{temp:'Very High',rain:'Medium',fire:'High',slr:'Very High'},sea:{sum:'Longer hotter summers; drought–flood cycles; fire conditions',aut:'Rapid dry/wet transitions; fire danger',win:'Warmer; less snow in Alps; reduced catchment inflows',spr:'Severe fire weather earlier; intense rainfall events'},water:'Sydney Warragamba catchment highly variable; Blue Mountains snowpack declining',agri:'Hunter Valley wine under heat stress; coastal horticulture disrupted by flooding',risks:[['Megafire risk','hi'],['Coastal flooding & erosion','hi'],['Water supply variability','hi'],['Compound heatwave/drought','hi']]},
+  {id:'victoria',name:'Victoria & ACT',src:'CSIRO/BOM 2015',cities:'Melbourne, Geelong, Bendigo, Ballarat, Canberra',bb:[-39,-33.5,140.5,150],rcp26:{'2030':{t:'+0.5–1.0°C',h:'+10–18 days >35°C',p:'Winter −5–10%; annual −3–8%',s:'7–18cm',w:'High',x:'Moderate – fire, heat stress'},'2050':{t:'+0.9–1.5°C',h:'+18–30 days >35°C',p:'Winter −8–18%; annual −5–12%',s:'11–27cm',w:'Very High',x:'High – fire season length, heatwave frequency'}},rcp85:{'2030':{t:'+1.0–1.5°C',h:'+18–28 days >35°C',p:'Winter −10–20%; annual −8–15%',s:'8–22cm',w:'Very High',x:'High – compound fire/drought'},'2050':{t:'+2.7–4.2°C',h:'+50–80 days >35°C',p:'Winter −20–35%; annual −15–25%',s:'14–38cm',w:'Extreme',x:'Very High – fire, drought, coastal flooding compound'}},conf:{temp:'Very High',rain:'High',fire:'High',slr:'Very High'},sea:{sum:'3+ consecutive 40°C+ day events more frequent; fire danger extreme',aut:'Rapidly drying; grass fire conditions',win:'Critical winter rainfall decline — Thomson/Yarra catchments reducing inflows',spr:'Longer fire season start; reduced spring rains; snowpack declining'},water:'Melbourne water supply under sustained stress; desalination essential; Gippsland Lakes threatened',agri:'Dairy industry severely impacted; Yarra Valley wine under threat; dryland farming increasingly marginal',risks:[['Water supply decline','hi'],['Extreme bushfire','hi'],['Heatwave mortality','hi'],['Coastal flooding — Port Phillip','hi']]},
+  {id:'south_aus',name:'South Australia',src:'CSIRO/BOM 2015',cities:'Adelaide, Barossa Valley, Whyalla, Port Augusta',bb:[-38,-26,129,141],rcp26:{'2030':{t:'+0.6–1.1°C',h:'+15–25 days >38°C',p:'Winter −5–12%; annual −3–8%',s:'7–18cm',w:'High',x:'High – drought, heatwave'},'2050':{t:'+1.0–1.6°C',h:'+25–45 days >38°C',p:'Winter −10–18%; annual −8–15%',s:'11–26cm',w:'Very High',x:'High – prolonged drought, intense heatwaves'}},rcp85:{'2030':{t:'+1.1–1.7°C',h:'+25–40 days >38°C',p:'Winter −10–20%; annual −8–15%',s:'8–21cm',w:'Very High',x:'High – compound drought/heat'},'2050':{t:'+2.8–4.5°C',h:'+65–95 days >38°C',p:'Winter −20–35%; near-permanent drought inland',s:'14–36cm',w:'Extreme',x:'Very High – near-permanent drought, extreme heat'}},conf:{temp:'Very High',rain:'High',fire:'High',slr:'Very High'},sea:{sum:'45°C+ events in Adelaide increasing; Outback unworkable in heat peaks',aut:'Very dry; extreme fire danger',win:'Critical winter rains declining; Murray River low-flow events increasing',spr:'Hot dry spring; fire season extending earlier'},water:'Murray flows declining −20–40%; Adelaide increasingly reliant on desalination',agri:'Barossa/Clare wine under severe heat stress; grain belt increasingly marginal',risks:[['Murray-Darling water dependency','hi'],['Extreme heat','hi'],['Wine industry viability','hi'],['Bushfire','hi']]},
+  {id:'sw_wa',name:'South-West Western Australia',src:'CSIRO/BOM 2015',cities:'Perth, Bunbury, Margaret River, Geraldton',bb:[-36,-26,114,122],rcp26:{'2030':{t:'+0.7–1.1°C',h:'+12–20 days >38°C',p:'Winter −8–15% (already −20% since 1970); annual −5–12%',s:'7–18cm',w:'High',x:'High – drought, fire'},'2050':{t:'+1.0–1.6°C',h:'+20–35 days >38°C',p:'Winter −12–22%; annual −10–18%',s:'11–27cm',w:'Very High',x:'High – water crisis, fire'}},rcp85:{'2030':{t:'+1.1–1.7°C',h:'+20–32 days >38°C',p:'Winter −12–22%; annual −10–18%',s:'8–22cm',w:'Very High',x:'High'},'2050':{t:'+2.7–4.5°C',h:'+55–85 days >38°C',p:'Winter −20–35%; extreme drying (high conf)',s:'14–38cm',w:'Extreme',x:'Very High – water security crisis, extreme fire'}},conf:{temp:'Very High',rain:'High',fire:'High',slr:'Very High'},sea:{sum:'Extreme heat; fire danger; summer heatwaves extend',aut:'Very dry; bushfire risk extreme',win:'Critical winter rainfall continuing to decline',spr:'Dry hot spring; early fire season'},water:'Perth groundwater declining critically; city >50% reliant on desalination; dams receiving far less inflow',agri:'Wheatbelt contracting southward; Margaret River wine at risk; Albany/Esperance new farming frontier',risks:[['Rainfall decline (most clearly observed)','hi'],['Water security','hi'],['Extreme bushfire','hi'],['Wheat/wine viability','hi']]},
+  {id:'tasmania',name:'Tasmania',src:'CSIRO/BOM 2015',cities:'Hobart, Launceston, Devonport, Burnie',bb:[-44,-39,143,149],rcp26:{'2030':{t:'+0.4–0.8°C',h:'+5–10 days >30°C',p:'Winter +3–8% west; east variable',s:'6–16cm',w:'Moderate',x:'Low–Moderate'},'2050':{t:'+0.7–1.2°C',h:'+10–18 days >30°C',p:'Winter +5–10% west; east variable; summer drier',s:'10–24cm',w:'Moderate–High',x:'Moderate – fire risk rising'}},rcp85:{'2030':{t:'+0.7–1.1°C',h:'+8–15 days >30°C',p:'Winter +3–8% west coast; east uncertain',s:'7–18cm',w:'High',x:'Moderate'},'2050':{t:'+1.8–3.2°C',h:'+25–50 days >30°C',p:'West +8–15%; east −5–15%; summer drier all regions',s:'13–35cm',w:'Very High',x:'High – 2019-style wildfires increasingly common'}},conf:{temp:'Very High',rain:'Medium',fire:'High',slr:'Very High'},sea:{sum:'Hotter drier summers; fire danger; unprecedented for ecosystems',aut:'Drying autumn; fire risk',win:'Less snow; west coast wetter (medium confidence)',spr:'Earlier fire season; reduced spring rainfall east'},water:'Hydropower storage affected; Hobart water supply adequate medium-term',agri:'Cool-climate advantage eroding; salmon aquaculture threatened; new crops becoming viable',risks:[['Wilderness bushfire','hi'],['Hydro power reliability','md'],['Salmon/aquaculture ocean warming','hi'],['Alpine ecosystem loss','hi']]},
+  {id:'southern_slopes',name:'Southern Slopes (Alpine SE)',src:'CSIRO/BOM 2015',cities:'Canberra, Cooma, Snowy Mountains, Gippsland',bb:[-38,-33.5,146,150],rcp26:{'2030':{t:'+0.5–1.0°C',h:'+8–15 days >35°C',p:'Winter −5–12%; spring −5–10%',s:'7–18cm (coast)',w:'High',x:'High – compound fire, flood, drought'},'2050':{t:'+0.9–1.4°C',h:'+15–28 days >35°C',p:'Winter −10–20%; snowpack −30–50%',s:'11–27cm (coast)',w:'Very High',x:'High – alpine ecosystem tipping points'}},rcp85:{'2030':{t:'+1.0–1.5°C',h:'+15–25 days >35°C',p:'Winter −10–20%; snowpack declining rapidly',s:'8–22cm (coast)',w:'Very High',x:'High'},'2050':{t:'+2.5–4.0°C',h:'+45–70 days >35°C',p:'Winter −20–35%; snow season −60–90%',s:'14–38cm (coast)',w:'Extreme',x:'Very High – annual megafire conditions'}},conf:{temp:'Very High',rain:'High',fire:'High',slr:'Very High'},sea:{sum:'Extreme fire danger; drought; heatwaves',aut:'Fire danger; dry windy conditions',win:'Snow season shortening dramatically; less water into Murray-Darling headwaters',spr:'Fire season starting weeks earlier; dry hot spring'},water:'Snowy scheme inputs declining; Murray headwater flows reducing',agri:'Ski industry existentially threatened; Monaro plateau grazing impacted',risks:[['Alpine snowpack loss','hi'],['Megafire','hi'],['Murray-Darling headwater decline','hi'],['Endemic alpine species extinction','hi']]},
+  {id:'nw_wa',name:'North-West Western Australia',src:'CSIRO/BOM 2015',cities:'Port Hedland, Karratha, Exmouth, Broome',bb:[-26,-14,113,122],rcp26:{'2030':{t:'+0.7–1.2°C',h:'+25–40 days >40°C',p:'Uncertain; cyclone rainfall variable',s:'6–18cm',w:'Moderate',x:'High – cyclone intensity, extreme heat'},'2050':{t:'+1.0–1.7°C',h:'+45–65 days >40°C',p:'Uncertain; more intense cyclone rainfall',s:'10–24cm',w:'Moderate–High',x:'High'}},rcp85:{'2030':{t:'+1.1–1.7°C',h:'+40–60 days >40°C',p:'Uncertain; intense cyclone events',s:'7–19cm',w:'High',x:'Very High – heat index dangerous'},'2050':{t:'+2.8–4.5°C',h:'+90–140 days >40°C',p:'Uncertain; extreme cyclone events',s:'13–36cm',w:'High',x:'Extreme – summer outdoor work life-threatening'}},conf:{temp:'Very High',rain:'Low',fire:'Medium',slr:'Very High'},sea:{sum:'48°C+ events; wet bulb temperatures dangerous; cyclone season',aut:'Hot; cyclone risk',win:'Mild but warming',spr:'Extreme heat; early cyclone season'},water:'Mining operations water-intensive; remote communities water security critical',agri:'Carnarvon horticulture heat-stressed; Gascoyne irrigation demanding more water',risks:[['Extreme heat (occupational safety)','hi'],['Cyclone intensification','hi'],['Coastal inundation','hi'],['Remote community water security','hi']]}
+];
+
+const NZ=[
+  {id:'nz_north',name:'Northern North Island',src:'NIWA 2020 / MfE',cities:'Auckland, Whangarei, Hamilton, Tauranga',bb:[-38.5,-34,172.5,178],rcp26:{'2030':{t:'+0.5–0.9°C',h:'+8–12 days >25°C',p:'Winter +3–6%; summer drier',s:'9–19cm',w:'Low–Moderate',x:'Moderate – intense rainfall, drought'},'2050':{t:'+0.7–1.3°C',h:'+15–25 days >25°C',p:'Winter +5–8%; summer −5–10%; extreme rain ↑↑',s:'14–27cm',w:'Moderate',x:'High – Cyclone Gabrielle-type flooding more frequent'}},rcp85:{'2030':{t:'+0.8–1.2°C',h:'+12–18 days >25°C',p:'Winter +4–7%; summer variable',s:'10–22cm',w:'Moderate',x:'High – compound flood/drought'},'2050':{t:'+1.8–3.0°C',h:'+35–55 days >25°C',p:'Winter +8–12%; summer −5–15%; extreme events intensify',s:'18–38cm',w:'Moderate–High',x:'Very High – major flooding, coastal inundation Auckland'}},conf:{temp:'Very High',rain:'High',fire:'Low–Medium',slr:'Very High'},sea:{sum:'Hotter drier summers; water restrictions; drought risk',aut:'Intense rainfall events; ex-tropical cyclones',win:'Wetter; flooding risk; warmer',spr:'Variable; storm risk; early drought onset'},water:'Auckland system stressed in drought years; Waikato River more variable',agri:'Subtropical horticulture expanding; dairying impacted by summer drought',risks:[['Urban flooding — Auckland','hi'],['Ex-tropical cyclone flooding','hi'],['Summer drought','md'],['Coastal erosion & storm surge','hi']]},
+  {id:'nz_eastern_ni',name:'Eastern North Island',src:'NIWA 2020 / MfE',cities:"Gisborne, Napier, Hastings, Hawke's Bay",bb:[-40.5,-37.5,175.5,178.5],rcp26:{'2030':{t:'+0.5–0.9°C',h:'+6–10 days >25°C',p:"Summer drier −3–8%; extreme rain ↑",s:'9–18cm',w:'Low–Moderate',x:'Moderate–High – flood/drought alternation'},'2050':{t:'+0.8–1.2°C',h:'+12–20 days >25°C',p:'Summer −5–12%; cyclone rainfall ↑',s:'14–26cm',w:'Moderate',x:'High – Gabrielle-type events more frequent'}},rcp85:{'2030':{t:'+0.8–1.2°C',h:'+8–15 days >25°C',p:'Summer drier; cyclone events intensifying',s:'10–21cm',w:'Moderate',x:'High'},'2050':{t:'+1.8–2.9°C',h:'+30–50 days >25°C',p:'Summer −10–20%; drought–flood cycles',s:'17–36cm',w:'Moderate–High',x:'Very High – extreme compound events'}},conf:{temp:'Very High',rain:'Medium',fire:'Medium',slr:'Very High'},sea:{sum:"Hawke's Bay drought; extreme fire danger inland",aut:'Cyclone season risk; intense rainfall',win:'Drier than west; some increased rainfall',spr:'Dry; fire risk; early drought onset'},water:"Hawke's Bay aquifers over-allocated; rivers declining summer flows",agri:"Apple, pear, wine grape industries threatened; cyclone damage to horticultural land",risks:[['Cyclone flooding (Gabrielle precedent)','hi'],['Summer drought','hi'],["Hawke's Bay horticulture",'hi'],['Coastal erosion','hi']]},
+  {id:'nz_wellington',name:'Wellington & Wairarapa',src:'NIWA 2020 / MfE',cities:'Wellington, Porirua, Lower Hutt, Masterton',bb:[-41.7,-40.5,174.5,176.5],rcp26:{'2030':{t:'+0.5–0.9°C',h:'+5–8 days >25°C',p:'Summer −3–7%; winter slightly wetter',s:'9–19cm',w:'Low–Moderate',x:'Moderate – storm intensity, coastal flooding'},'2050':{t:'+0.7–1.2°C',h:'+8–15 days >25°C',p:'Summer −5–12%; storms more intense',s:'14–27cm',w:'Low–Moderate',x:'Moderate–High – sea-level risk to Wellington CBD'}},rcp85:{'2030':{t:'+0.8–1.2°C',h:'+7–12 days >25°C',p:'Summer −5–10%; storms intensifying',s:'10–22cm',w:'Moderate',x:'Moderate–High'},'2050':{t:'+1.8–2.9°C',h:'+22–40 days >25°C',p:'Summer −10–20%; extreme storms more frequent',s:'17–37cm',w:'Moderate–High',x:'High – Wellington harbour flooding, storm surge'}},conf:{temp:'Very High',rain:'High',fire:'Low',slr:'Very High'},sea:{sum:'Hotter drier summers; Wairarapa drought',aut:'Storm season; intense southerlies',win:'Stronger westerlies; wetter west',spr:'Variable; dry Wairarapa spring'},water:'Wellington catchments affected by variable rainfall; Wairarapa groundwater stressed',agri:'Wairarapa wine and sheep/beef under summer drought stress',risks:[['Sea-level rise — Wellington CBD','hi'],['Extreme storm surge','hi'],['Wind intensification','md'],['Wairarapa drought','md']]},
+  {id:'nz_marlborough',name:'Marlborough, Nelson & Tasman',src:'NIWA 2020 / MfE',cities:'Nelson, Blenheim, Picton, Kaikōura',bb:[-42.5,-40.5,172,174.5],rcp26:{'2030':{t:'+0.5–0.9°C',h:'+8–14 days >28°C',p:'Summer −5–10%; winter slightly wetter; drought risk ↑',s:'9–18cm',w:'Moderate',x:'Moderate – drought, early fire season'},'2050':{t:'+0.8–1.3°C',h:'+15–25 days >28°C',p:'Summer −8–15%; drought longer',s:'13–26cm',w:'Moderate–High',x:'Moderate–High – wildfire, wine heat stress'}},rcp85:{'2030':{t:'+0.9–1.3°C',h:'+12–18 days >28°C',p:'Summer −8–14%; winter slightly wetter',s:'10–21cm',w:'Moderate–High',x:'Moderate–High'},'2050':{t:'+2.0–3.2°C',h:'+35–60 days >28°C',p:'Summer −15–25%; intense drought; fire risk extreme',s:'17–36cm',w:'High',x:'High – major wildfire events, wine industry threatened'}},conf:{temp:'Very High',rain:'High',fire:'Medium–High',slr:'High'},sea:{sum:'Marlborough drought more frequent; extreme fire danger',aut:'Dry; fire conditions',win:'Wetter west; drier east; less frost',spr:'Drier springs; early fire season'},water:'Wairau aquifer stressed; Waimea Plains water security disputes; irrigation demand rising',agri:'Marlborough Sauvignon Blanc heat stressed; harvest advancing; quality at risk',risks:[['Wine industry heat stress','hi'],['Wildfire risk','hi'],['Summer drought','hi'],['Irrigation water allocation','md']]},
+  {id:'nz_westcoast',name:'West Coast & Fiordland',src:'NIWA 2020 / MfE',cities:'Greymouth, Westport, Franz Josef, Milford Sound',bb:[-46.5,-41,166,172],rcp26:{'2030':{t:'+0.4–0.8°C',h:'+3–6 days >25°C',p:'Annual +3–6%; extreme events ↑',s:'8–17cm',w:'Low',x:'Moderate – river flooding, glacial outburst'},'2050':{t:'+0.6–1.1°C',h:'+5–10 days >25°C',p:'Annual +5–10%; extreme rainfall intensifies',s:'12–24cm',w:'Low–Moderate',x:'Moderate – Westport-type flooding more frequent'}},rcp85:{'2030':{t:'+0.7–1.1°C',h:'+4–8 days >25°C',p:'Annual +4–8%; more intense rainfall',s:'9–19cm',w:'Low–Moderate',x:'High – extreme flooding'},'2050':{t:'+1.6–2.8°C',h:'+15–30 days >25°C',p:'Annual +8–15%; extreme events very frequent',s:'14–35cm',w:'Moderate',x:'Very High – frequent major flooding, glaciers gone'}},conf:{temp:'Very High',rain:'High',fire:'Low',slr:'Very High'},sea:{sum:'Glaciers retreating rapidly; warmer',aut:'Intense rainfall; flooding',win:'Less snow; more rain; glaciers accelerating retreat',spr:'High river flows; glacial melt declining as glaciers recede'},water:'Franz Josef and Fox Glaciers gone by ~2080–2100 under RCP8.5; rivers more flashy',agri:'Dairy on coastal flats at flood risk',risks:[['Glacial retreat (Franz Josef, Fox)','hi'],['Flash flooding (Westport 2021)','hi'],['Coastal erosion','hi'],['Infrastructure damage','hi']]},
+  {id:'nz_canterbury',name:'Canterbury & Otago',src:'NIWA 2020 / MfE',cities:'Christchurch, Dunedin, Queenstown, Wānaka',bb:[-46.5,-42.5,168,174],rcp26:{'2030':{t:'+0.5–0.9°C',h:'+8–14 days >28°C',p:'Summer −3–8%; winter drier east',s:'8–17cm',w:'Moderate',x:'Moderate – drought frequency ↑'},'2050':{t:'+0.8–1.3°C',h:'+15–28 days >28°C',p:'Summer −5–15%; snowpack −20–35%',s:'12–25cm',w:'Moderate–High',x:'Moderate–High – drought, fire (Mackenzie)'}},rcp85:{'2030':{t:'+0.9–1.4°C',h:'+12–20 days >28°C',p:'Summer −5–12%; snowpack declining rapidly',s:'9–20cm',w:'High',x:'High – severe drought; alpine fire risk'},'2050':{t:'+2.0–3.3°C',h:'+40–70 days >28°C',p:'Summer −15–25%; snowpack −40–70%',s:'14–34cm',w:'Very High',x:'Very High – major drought, alpine transformation'}},conf:{temp:'Very High',rain:'High',fire:'Medium–High',slr:'High'},sea:{sum:'Extreme heat in Central Otago; Canterbury Plains drought; irrigation demand peaks',aut:'Dry; fire risk Mackenzie/Central Otago',win:'Less snow in Southern Alps — threat to irrigation',spr:'Dry warm spring; irrigation season starts earlier'},water:"Canterbury irrigation critically dependent on Southern Alps snowpack declining −40–70% by 2090 under RCP8.5",agri:'Arable farming under water stress; Central Otago Pinot Noir at tipping point; ski industry threatened',risks:[['Canterbury irrigation water','hi'],['Central Otago wildfire','hi'],['Ski industry viability','hi'],['Summer drought','hi']]},
+  {id:'nz_southland',name:'Southland & Stewart Island',src:'NIWA 2020 / MfE',cities:'Invercargill, Gore, Bluff, Oban',bb:[-47.5,-45.5,166,169.5],rcp26:{'2030':{t:'+0.4–0.8°C',h:'+2–5 days >25°C',p:'Variable ±3–5%; slightly wetter south',s:'8–17cm',w:'Low',x:'Low–Moderate'},'2050':{t:'+0.6–1.1°C',h:'+5–10 days >25°C',p:'Slightly wetter; extreme events ↑',s:'12–24cm',w:'Low–Moderate',x:'Moderate – storm surge; ocean acidification'}},rcp85:{'2030':{t:'+0.7–1.1°C',h:'+3–7 days >25°C',p:'Variable; slightly wetter south',s:'9–19cm',w:'Low–Moderate',x:'Moderate'},'2050':{t:'+1.6–2.8°C',h:'+15–30 days >25°C',p:'+5–10% wetter; extreme events',s:'14–34cm',w:'Moderate',x:'Moderate–High – sea-level risk, ocean acidification'}},conf:{temp:'Very High',rain:'Medium',fire:'Low',slr:'Very High'},sea:{sum:'Longer warmer summers — extended growing season',aut:'Wetter; some flooding risk',win:'Milder winters; less frost',spr:'Earlier spring; longer growing season'},water:'Generally adequate; Fiordland hydro (Manapōuri) secure medium-term',agri:'Dairy benefits initially from milder winters; ocean acidification threatens Bluff oysters',risks:[['Sea-level rise — Invercargill','md'],['Ocean acidification (Bluff oysters)','hi'],['Storm surge & coastal flooding','md'],['Ecosystem shift','md']]}
+];
+
+const GLOBAL={
+  arctic:{rcp26:{'2030':{t:'+1.8°C',h:'+5–10 days >30°C',p:'+8% wetter',s:'6–18cm',w:'Low–Moderate',x:'Moderate'},'2050':{t:'+2.2°C',h:'+15–25 days',p:'+12% wetter',s:'10–25cm',w:'Moderate',x:'Moderate'}},rcp85:{'2030':{t:'+2.5°C',h:'+12–20 days',p:'+10% wetter',s:'8–22cm',w:'Moderate–High',x:'High'},'2050':{t:'+4.5°C',h:'+35–55 days',p:'+18% wetter',s:'18–45cm',w:'High',x:'Very High'}}},
+  mediterranean:{rcp26:{'2030':{t:'+1.5°C',h:'+15–20 days >35°C',p:'−10% drier',s:'6–17cm',w:'Moderate–High',x:'Moderate'},'2050':{t:'+1.8°C',h:'+25–35 days',p:'−15% drier',s:'10–25cm',w:'High',x:'High'}},rcp85:{'2030':{t:'+2.0°C',h:'+22–30 days',p:'−15% drier',s:'8–21cm',w:'High',x:'High'},'2050':{t:'+3.8°C',h:'+55–75 days',p:'−30% drier',s:'15–38cm',w:'Very High',x:'Very High'}}},
+  north_america:{rcp26:{'2030':{t:'+1.4°C',h:'+10–15 days >35°C',p:'+5% north, variable',s:'6–17cm',w:'Moderate–High',x:'Moderate'},'2050':{t:'+1.8°C',h:'+18–28 days',p:'+8% north, −10% SW',s:'10–25cm',w:'High',x:'Moderate–High'}},rcp85:{'2030':{t:'+2.0°C',h:'+16–25 days',p:'+5% north, −15% SW',s:'8–21cm',w:'High',x:'High'},'2050':{t:'+4.0°C',h:'+50–70 days',p:'+15% north, −25% SW',s:'15–40cm',w:'Very High',x:'Very High'}}},
+  europe:{rcp26:{'2030':{t:'+1.4°C',h:'+8–12 days >30°C',p:'+5% north, −8% south',s:'6–17cm',w:'Low–Moderate',x:'Moderate'},'2050':{t:'+1.7°C',h:'+14–20 days',p:'+8% north, −12% south',s:'10–24cm',w:'Moderate',x:'Moderate'}},rcp85:{'2030':{t:'+1.9°C',h:'+13–20 days',p:'+5% north, −12% south',s:'8–20cm',w:'Moderate',x:'High'},'2050':{t:'+3.6°C',h:'+40–60 days',p:'+12% north, −25% south',s:'14–38cm',w:'High',x:'Very High'}}},
+  south_asia:{rcp26:{'2030':{t:'+1.4°C',h:'+20–30 days >35°C',p:'+5% monsoon intensity',s:'7–19cm',w:'Low–Moderate',x:'High'},'2050':{t:'+1.7°C',h:'+30–45 days',p:'+10% monsoon',s:'12–28cm',w:'Moderate',x:'High'}},rcp85:{'2030':{t:'+2.0°C',h:'+28–40 days',p:'+8% monsoon, more intense',s:'9–24cm',w:'Moderate',x:'Very High'},'2050':{t:'+4.0°C',h:'+65–90 days',p:'+20% monsoon, extreme',s:'17–42cm',w:'High',x:'Extreme'}}},
+  tropical_africa:{rcp26:{'2030':{t:'+1.5°C',h:'+25–35 days >35°C',p:'Variable ±10%',s:'6–18cm',w:'Moderate–High',x:'Moderate'},'2050':{t:'+1.9°C',h:'+40–55 days',p:'−10% Sahel, +5% equatorial',s:'10–25cm',w:'High',x:'High'}},rcp85:{'2030':{t:'+2.2°C',h:'+35–50 days',p:'−15% Sahel',s:'8–22cm',w:'High',x:'High'},'2050':{t:'+4.5°C',h:'+90–120 days',p:'−25% Sahel; intense equatorial floods',s:'16–40cm',w:'Very High',x:'Extreme'}}},
+  tropical_americas:{rcp26:{'2030':{t:'+1.4°C',h:'+20–28 days >35°C',p:'−5% Amazon',s:'6–17cm',w:'High',x:'Moderate–High'},'2050':{t:'+1.7°C',h:'+30–45 days',p:'−10% Amazon',s:'10–25cm',w:'High',x:'High'}},rcp85:{'2030':{t:'+2.0°C',h:'+28–40 days',p:'−10% Amazon',s:'8–21cm',w:'Very High',x:'High'},'2050':{t:'+4.0°C',h:'+70–100 days',p:'−30% Amazon (dieback risk)',s:'15–38cm',w:'Extreme',x:'Very High'}}},
+  mideast:{rcp26:{'2030':{t:'+1.6°C',h:'+25–35 days >40°C',p:'−10% drier',s:'6–17cm',w:'Low–Moderate',x:'Moderate'},'2050':{t:'+2.0°C',h:'+40–55 days',p:'−15% drier',s:'10–25cm',w:'Moderate',x:'High'}},rcp85:{'2030':{t:'+2.3°C',h:'+38–52 days',p:'−15% drier',s:'8–21cm',w:'Moderate',x:'High'},'2050':{t:'+4.5°C',h:'+90–130 days >40°C',p:'−30% drier',s:'15–38cm',w:'High',x:'Extreme'}}},
+  sh_temperate:{rcp26:{'2030':{t:'+1.2°C',h:'+10–15 days >30°C',p:'−5% variable',s:'6–16cm',w:'Moderate',x:'Moderate'},'2050':{t:'+1.6°C',h:'+18–28 days',p:'−10%',s:'10–24cm',w:'Moderate–High',x:'Moderate–High'}},rcp85:{'2030':{t:'+1.8°C',h:'+16–24 days',p:'−10%',s:'8–20cm',w:'High',x:'High'},'2050':{t:'+3.5°C',h:'+45–65 days',p:'−20%',s:'14–36cm',w:'Very High',x:'Very High'}}},
+  global:{rcp26:{'2030':{t:'+1.3°C',h:'+10–15 days',p:'Variable ±8%',s:'6–16cm',w:'Moderate',x:'Moderate'},'2050':{t:'+1.6°C',h:'+16–24 days',p:'Variable ±12%',s:'10–24cm',w:'Moderate',x:'Moderate–High'}},rcp85:{'2030':{t:'+1.8°C',h:'+14–22 days',p:'Variable ±12%',s:'8–20cm',w:'Moderate–High',x:'High'},'2050':{t:'+3.5°C',h:'+40–60 days',p:'Variable ±20%',s:'14–36cm',w:'High',x:'Very High'}}}
+};
+
+function getGR(lat,lng){
+  if(lat>60) return {id:'arctic',name:'Arctic & Subarctic'};
+  if(lat>=30&&lat<=45&&lng>=-10&&lng<=40) return {id:'mediterranean',name:'Mediterranean'};
+  if(lat>=25&&lat<=72&&lng>=-170&&lng<=-50) return {id:'north_america',name:'North America'};
+  if(lat>=35&&lat<=72&&lng>=-25&&lng<=45) return {id:'europe',name:'Europe'};
+  if(lat>=15&&lat<=55&&lng>=25&&lng<=75) return {id:'mideast',name:'Middle East & Central Asia'};
+  if(lat>=-10&&lat<=35&&lng>=60&&lng<=150) return {id:'south_asia',name:'South & Southeast Asia'};
+  if(lat>=-23&&lat<=23&&lng>=-120&&lng<=-30) return {id:'tropical_americas',name:'Tropical Americas'};
+  if(lat>=-23&&lat<=23&&lng>=-20&&lng<=55) return {id:'tropical_africa',name:'Tropical Africa'};
+  if(lat<-23&&lat>-60) return {id:'sh_temperate',name:'Southern Hemisphere Temperate'};
+  return {id:'global',name:'Temperate Region'};
+}
+
+const RS={'Low':10,'Low–Moderate':25,'Moderate':40,'Moderate–High':55,'High':70,'Very High':85,'Extreme':100};
+function risk(v){for(const k of Object.keys(RS))if(v.startsWith(k))return RS[k];return 50;}
+
+function mets(col,d){
+  return [
+    {e:'🌡️',l:'Temperature Change',v:d.t},
+    {e:'☀️',l:'Extra Extreme Heat Days/yr',v:d.h},
+    {e:'🌧️',l:'Precipitation Change',v:d.p},
+    {e:'🌊',l:'Sea Level Rise',v:d.s},
+    {e:'🔥',l:'Wildfire Risk',v:d.w,bar:true},
+    {e:'🌀',l:'Extreme Weather',v:d.x,bar:true},
+  ].map(m=>`<div class="met"><span class="em">${m.e}</span><div class="mi"><div class="ml">${m.l}</div><div class="mv ${col}">${m.v}</div>${m.bar?`<div class="bt"><div class="bf ${col}" style="width:${risk(m.v)}%"></div></div>`:''}</div></div>`).join('');
+}
+
+function sy(col,yr){const d=window._gd;if(!d)return;const p=col==='g'?'g':'r',sc=col==='g'?'rcp26':'rcp85';document.getElementById(`${p}30`).classList.toggle('active',yr==='2030');document.getElementById(`${p}50`).classList.toggle('active',yr==='2050');document.getElementById(`${p}m`).innerHTML=mets(col,d[sc][yr]);}
+function sd(col,yr){const d=window._dr;if(!d)return;const p=col==='g'?'dg':'dr',sc=col==='g'?'rcp26':'rcp85';document.getElementById(`${p}30`).classList.toggle('active',yr==='2030');document.getElementById(`${p}50`).classList.toggle('active',yr==='2050');document.getElementById(`${p}m`).innerHTML=mets(col,d[sc][yr]);}
+
+function confBadge(label,level){const cls=level.startsWith('Very H')||level.startsWith('High')?'hi':'med';return `<span class="conf ${cls}">${label}: ${level}</span>`;}
+
+function renderDetail(r){
+  window._dr=r;
+  const tags=r.risks.map(([lbl,lvl])=>`<span class="tag ${lvl}">${lbl}</span>`).join('');
+  const confHtml=Object.entries(r.conf).map(([k,v])=>confBadge(k,v)).join(' ');
+  return `
+  <div class="dbox">
+    <h3>📊 Regional Projections <span>${r.src}</span></h3>
+    <div class="dsec"><h4>Model Confidence</h4><div style="font-size:0.65rem;line-height:2">${confHtml}</div></div>
+    <div class="dsec">
+      <h4>Scenario Comparison</h4>
+      <div class="sg">
+        <div class="sc g"><h3>🟢 RCP 2.6</h3><div class="sl">Rapid decarbonisation</div>
+          <div class="ytabs"><div class="yt g" id="dg30" onclick="sd('g','2030')">2030</div><div class="yt g active" id="dg50" onclick="sd('g','2050')">2050</div></div>
+          <div id="dgm">${mets('g',r.rcp26['2050'])}</div></div>
+        <div class="sc r"><h3>🔴 RCP 8.5</h3><div class="sl">Business as usual</div>
+          <div class="ytabs"><div class="yt r" id="dr30" onclick="sd('r','2030')">2030</div><div class="yt r active" id="dr50" onclick="sd('r','2050')">2050</div></div>
+          <div id="drm">${mets('r',r.rcp85['2050'])}</div></div>
+      </div>
+    </div>
+    <div class="dsec"><h4>🗓️ Seasonal Impacts (RCP 8.5 — 2050)</h4>
+      <div class="seas-grid">
+        <div class="seas-cell"><div class="sc-label">☀️ Summer</div><div class="sc-val">${r.sea.sum}</div></div>
+        <div class="seas-cell"><div class="sc-label">🍂 Autumn</div><div class="sc-val">${r.sea.aut}</div></div>
+        <div class="seas-cell"><div class="sc-label">❄️ Winter</div><div class="sc-val">${r.sea.win}</div></div>
+        <div class="seas-cell"><div class="sc-label">🌸 Spring</div><div class="sc-val">${r.sea.spr}</div></div>
+      </div></div>
+    <div class="dsec"><h4>💧 Water Security</h4><div class="dcard">${r.water}</div></div>
+    <div class="dsec"><h4>🌾 Agriculture & Industry</h4><div class="dcard">${r.agri}</div></div>
+    <div class="dsec"><h4>⚠️ Key Risks</h4><div class="tags">${tags}</div></div>
+  </div>`;
+}
+
+async function select(lat,lng,label){
+  const name=label||`${lat.toFixed(2)}°, ${lng.toFixed(2)}°`;
+  const short=name.split(',').slice(0,2).join(',');
+  const ausR=AUS.find(r=>lat>=r.bb[0]&&lat<=r.bb[1]&&lng>=r.bb[2]&&lng<=r.bb[3]);
+  const nzR=NZ.find(r=>lat>=r.bb[0]&&lat<=r.bb[1]&&lng>=r.bb[2]&&lng<=r.bb[3]);
+  const det=ausR||nzR;
+
+  // Build physical risk HTML
+  let physHTML='';
+  if(det){
+    physHTML=`
+      <div class="lh">
+        <div class="badge">🔬 ${det.src}</div>
+        <h2>📍 ${short}</h2>
+        <div class="sub">${det.name} · ${det.cities}</div>
+        <div class="coords">${lat.toFixed(2)}°, ${lng.toFixed(2)}°</div>
+      </div>
+      ${renderDetail(det)}
+      <div class="disc">⚠️ Projections from ${det.src}. Change relative to 1986–2005 baseline; ensemble medians. Not for engineering or policy decisions without site-specific assessment.</div>`;
+  } else {
+    const reg=getGR(lat,lng);
+    const d=GLOBAL[reg.id]||GLOBAL.global;
+    window._gd=d;
+    physHTML=`
+      <div class="lh">
+        <h2>📍 ${short}</h2>
+        <div class="sub">${reg.name} · ${lat.toFixed(2)}°, ${lng.toFixed(2)}°</div>
+      </div>
+      <div class="sg">
+        <div class="sc g"><h3>🟢 RCP 2.6</h3><div class="sl">Rapid decarbonisation ~1.5–2°C</div>
+          <div class="ytabs"><div class="yt g" id="g30" onclick="sy('g','2030')">2030</div><div class="yt g active" id="g50" onclick="sy('g','2050')">2050</div></div>
+          <div id="gm">${mets('g',d.rcp26['2050'])}</div></div>
+        <div class="sc r"><h3>🔴 RCP 8.5</h3><div class="sl">Business as usual 4°C+</div>
+          <div class="ytabs"><div class="yt r" id="r30" onclick="sy('r','2030')">2030</div><div class="yt r active" id="r50" onclick="sy('r','2050')">2050</div></div>
+          <div id="rm">${mets('r',d.rcp85['2050'])}</div></div>
+      </div>
+      <div class="disc">⚠️ IPCC AR6 ensemble medians. Click within Australia or New Zealand for enhanced CSIRO/NIWA regional data.</div>`;
+  }
+
+  // Rebuild panel: physical first, then transitional
+  const panel=document.getElementById('panel');
+  panel.innerHTML=`
+    <div class="section-title">🌡️ Physical Climate Risk</div>
+    ${physHTML}
+    <div class="section-title" style="margin-top:4px">⚡ Transitional Climate Risk</div>
+    <div id="tr-panel"></div>
+  `;
+  initTR();
+}
+
+function initTR(){
+  document.getElementById('tr-panel').innerHTML=`
+    <div class="tr-section">
+      <div class="tr-dropdowns">
+        <div>
+          <label>🏭 Industry Sector</label>
+          <select id="tr-ind" onchange="renderTR()">
+            <option value="">— Select industry —</option>
+            <option value="oil_gas">Oil & Gas</option>
+            <option value="coal">Coal Mining</option>
+            <option value="utilities">Utilities & Energy</option>
+            <option value="transport">Transport & Logistics</option>
+            <option value="agriculture">Agriculture & Food</option>
+            <option value="construction">Construction & Infrastructure</option>
+            <option value="financial">Financial Services</option>
+            <option value="insurance">Insurance</option>
+            <option value="manufacturing">Manufacturing</option>
+            <option value="tourism">Tourism & Hospitality</option>
+            <option value="real_estate">Real Estate</option>
+            <option value="retail">Retail & Consumer</option>
+          </select>
+        </div>
+        <div>
+          <label>👤 Personal Profile</label>
+          <select id="tr-per" onchange="renderTR()">
+            <option value="">— Select profile —</option>
+            <option value="homeowner">Homeowner</option>
+            <option value="renter">Renter</option>
+            <option value="investor">Investor / Superannuation</option>
+            <option value="farmer">Farmer / Rural</option>
+            <option value="small_biz">Small Business Owner</option>
+            <option value="transition_worker">Employee in High-Transition Industry</option>
+            <option value="retiree">Retiree</option>
+            <option value="consumer">General Consumer</option>
+          </select>
+        </div>
+      </div>
+      <div id="tr-content"><div class="tr-placeholder">Select an industry or personal profile above to explore transitional climate risk.</div></div>
+    </div>
+  `;
+}
+
+// Init TR panel on load (before location selected)
+document.getElementById('tr-panel').innerHTML=`
+  <div class="section-title">⚡ Transitional Climate Risk</div>
+  <div class="tr-section">
+    <div class="tr-dropdowns">
+      <div>
+        <label>🏭 Industry Sector</label>
+        <select id="tr-ind" onchange="renderTR()">
+          <option value="">— Select industry —</option>
+          <option value="oil_gas">Oil & Gas</option>
+          <option value="coal">Coal Mining</option>
+          <option value="utilities">Utilities & Energy</option>
+          <option value="transport">Transport & Logistics</option>
+          <option value="agriculture">Agriculture & Food</option>
+          <option value="construction">Construction & Infrastructure</option>
+          <option value="financial">Financial Services</option>
+          <option value="insurance">Insurance</option>
+          <option value="manufacturing">Manufacturing</option>
+          <option value="tourism">Tourism & Hospitality</option>
+          <option value="real_estate">Real Estate</option>
+          <option value="retail">Retail & Consumer</option>
+        </select>
+      </div>
+      <div>
+        <label>👤 Personal Profile</label>
+        <select id="tr-per" onchange="renderTR()">
+          <option value="">— Select profile —</option>
+          <option value="homeowner">Homeowner</option>
+          <option value="renter">Renter</option>
+          <option value="investor">Investor / Superannuation</option>
+          <option value="farmer">Farmer / Rural</option>
+          <option value="small_biz">Small Business Owner</option>
+          <option value="transition_worker">Employee in High-Transition Industry</option>
+          <option value="retiree">Retiree</option>
+          <option value="consumer">General Consumer</option>
+        </select>
+      </div>
+    </div>
+    <div id="tr-content"><div class="tr-placeholder">Select an industry or personal profile above to explore transitional climate risk.</div></div>
+  </div>
+`;
+</script>
+</body>
+</html>
