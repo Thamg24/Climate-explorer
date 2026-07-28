@@ -387,13 +387,13 @@ const PERSONAL = {
 
 // Render transitional risk panel
 function renderTR(){
-  const iKey=document.getElementById('tr-ind').value;
-  const pKey=document.getElementById('tr-per').value;
-  const ind=INDUSTRY[iKey];
-  const per=PERSONAL[pKey];
-
+  const val=document.getElementById('tr-sel').value;
   const container=document.getElementById('tr-content');
-  if(!ind&&!per){ container.innerHTML=`<div class="tr-placeholder">Select an industry or personal profile above to explore transitional climate risk.</div>`; return; }
+  if(!val){ container.innerHTML=`<div class="tr-placeholder">Select an industry or personal profile above to explore transitional climate risk.</div>`; return; }
+
+  const [type,key]=val.split(':');
+  const d=type==='ind'?INDUSTRY[key]:PERSONAL[key];
+  const title=type==='ind'?`🏭 Industry: ${d.label}`:`👤 Personal: ${d.label}`;
 
   let html='';
 
@@ -422,9 +422,7 @@ function renderTR(){
     </div>`;
   }
 
-  if(ind) block(ind, `🏭 Industry: ${ind.label}`);
-  if(per) block(per, `👤 Personal: ${per.label}`);
-
+  block(d, title);
   container.innerHTML=html;
 }
 
@@ -583,37 +581,35 @@ async function select(lat,lng,label){
 function initTR(){
   document.getElementById('tr-panel').innerHTML=`
     <div class="tr-section">
-      <div class="tr-dropdowns">
+      <div class="tr-dropdowns" style="grid-template-columns:1fr">
         <div>
-          <label>🏭 Industry Sector</label>
-          <select id="tr-ind" onchange="renderTR()">
-            <option value="">— Select industry —</option>
-            <option value="oil_gas">Oil & Gas</option>
-            <option value="coal">Coal Mining</option>
-            <option value="utilities">Utilities & Energy</option>
-            <option value="transport">Transport & Logistics</option>
-            <option value="agriculture">Agriculture & Food</option>
-            <option value="construction">Construction & Infrastructure</option>
-            <option value="financial">Financial Services</option>
-            <option value="insurance">Insurance</option>
-            <option value="manufacturing">Manufacturing</option>
-            <option value="tourism">Tourism & Hospitality</option>
-            <option value="real_estate">Real Estate</option>
-            <option value="retail">Retail & Consumer</option>
-          </select>
-        </div>
-        <div>
-          <label>👤 Personal Profile</label>
-          <select id="tr-per" onchange="renderTR()">
-            <option value="">— Select profile —</option>
-            <option value="homeowner">Homeowner</option>
-            <option value="renter">Renter</option>
-            <option value="investor">Investor / Superannuation</option>
-            <option value="farmer">Farmer / Rural</option>
-            <option value="small_biz">Small Business Owner</option>
-            <option value="transition_worker">Employee in High-Transition Industry</option>
-            <option value="retiree">Retiree</option>
-            <option value="consumer">General Consumer</option>
+          <label>⚡ Select industry or personal profile</label>
+          <select id="tr-sel" onchange="renderTR()">
+            <option value="">— Choose a profile —</option>
+            <optgroup label="🏭 Industry Sectors">
+              <option value="ind:oil_gas">Oil & Gas</option>
+              <option value="ind:coal">Coal Mining</option>
+              <option value="ind:utilities">Utilities & Energy</option>
+              <option value="ind:transport">Transport & Logistics</option>
+              <option value="ind:agriculture">Agriculture & Food</option>
+              <option value="ind:construction">Construction & Infrastructure</option>
+              <option value="ind:financial">Financial Services</option>
+              <option value="ind:insurance">Insurance</option>
+              <option value="ind:manufacturing">Manufacturing</option>
+              <option value="ind:tourism">Tourism & Hospitality</option>
+              <option value="ind:real_estate">Real Estate</option>
+              <option value="ind:retail">Retail & Consumer</option>
+            </optgroup>
+            <optgroup label="👤 Personal Profiles">
+              <option value="per:homeowner">Homeowner</option>
+              <option value="per:renter">Renter</option>
+              <option value="per:investor">Investor / Superannuation</option>
+              <option value="per:farmer">Farmer / Rural</option>
+              <option value="per:small_biz">Small Business Owner</option>
+              <option value="per:transition_worker">Employee in High-Transition Industry</option>
+              <option value="per:retiree">Retiree</option>
+              <option value="per:consumer">General Consumer</option>
+            </optgroup>
           </select>
         </div>
       </div>
@@ -626,37 +622,35 @@ function initTR(){
 document.getElementById('tr-panel').innerHTML=`
   <div class="section-title">⚡ Transitional Climate Risk</div>
   <div class="tr-section">
-    <div class="tr-dropdowns">
+    <div class="tr-dropdowns" style="grid-template-columns:1fr">
       <div>
-        <label>🏭 Industry Sector</label>
-        <select id="tr-ind" onchange="renderTR()">
-          <option value="">— Select industry —</option>
-          <option value="oil_gas">Oil & Gas</option>
-          <option value="coal">Coal Mining</option>
-          <option value="utilities">Utilities & Energy</option>
-          <option value="transport">Transport & Logistics</option>
-          <option value="agriculture">Agriculture & Food</option>
-          <option value="construction">Construction & Infrastructure</option>
-          <option value="financial">Financial Services</option>
-          <option value="insurance">Insurance</option>
-          <option value="manufacturing">Manufacturing</option>
-          <option value="tourism">Tourism & Hospitality</option>
-          <option value="real_estate">Real Estate</option>
-          <option value="retail">Retail & Consumer</option>
-        </select>
-      </div>
-      <div>
-        <label>👤 Personal Profile</label>
-        <select id="tr-per" onchange="renderTR()">
-          <option value="">— Select profile —</option>
-          <option value="homeowner">Homeowner</option>
-          <option value="renter">Renter</option>
-          <option value="investor">Investor / Superannuation</option>
-          <option value="farmer">Farmer / Rural</option>
-          <option value="small_biz">Small Business Owner</option>
-          <option value="transition_worker">Employee in High-Transition Industry</option>
-          <option value="retiree">Retiree</option>
-          <option value="consumer">General Consumer</option>
+        <label>⚡ Select industry or personal profile</label>
+        <select id="tr-sel" onchange="renderTR()">
+          <option value="">— Choose a profile —</option>
+          <optgroup label="🏭 Industry Sectors">
+            <option value="ind:oil_gas">Oil & Gas</option>
+            <option value="ind:coal">Coal Mining</option>
+            <option value="ind:utilities">Utilities & Energy</option>
+            <option value="ind:transport">Transport & Logistics</option>
+            <option value="ind:agriculture">Agriculture & Food</option>
+            <option value="ind:construction">Construction & Infrastructure</option>
+            <option value="ind:financial">Financial Services</option>
+            <option value="ind:insurance">Insurance</option>
+            <option value="ind:manufacturing">Manufacturing</option>
+            <option value="ind:tourism">Tourism & Hospitality</option>
+            <option value="ind:real_estate">Real Estate</option>
+            <option value="ind:retail">Retail & Consumer</option>
+          </optgroup>
+          <optgroup label="👤 Personal Profiles">
+            <option value="per:homeowner">Homeowner</option>
+            <option value="per:renter">Renter</option>
+            <option value="per:investor">Investor / Superannuation</option>
+            <option value="per:farmer">Farmer / Rural</option>
+            <option value="per:small_biz">Small Business Owner</option>
+            <option value="per:transition_worker">Employee in High-Transition Industry</option>
+            <option value="per:retiree">Retiree</option>
+            <option value="per:consumer">General Consumer</option>
+          </optgroup>
         </select>
       </div>
     </div>
