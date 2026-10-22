@@ -139,6 +139,7 @@ body{font-family:var(--f-body);font-size:14px;color:var(--ink);background:var(--
   transition:all .15s;
 }
 .tab.rcp26.active{background:var(--ok);border-color:var(--ok);color:#fff}
+.tab.rcp45.active{background:var(--warn);border-color:var(--warn);color:#fff}
 .tab.rcp85.active{background:var(--bad);border-color:var(--bad);color:#fff}
 .tab.yr.active{background:var(--accent);border-color:var(--accent);color:#fff}
 .tab:hover:not(.active){border-color:var(--accent);color:var(--accent)}
@@ -336,7 +337,7 @@ body{font-family:var(--f-body);font-size:14px;color:var(--ink);background:var(--
 
     <div class="rail-head">
       <h1>Climate Impact Explorer</h1>
-      <p>Projected physical climate impacts at any location — 2030 &amp; 2050 under two emission scenarios</p>
+      <p>Projected physical climate impacts at any location — 2030, 2050 &amp; 2090 under three emission scenarios</p>
     </div>
 
     <div class="search-wrap">
@@ -411,391 +412,326 @@ marker.getElement().style.display='none';
 map.on('click', e => select(e.lngLat.lat, e.lngLat.lng, null));
 
 // ── State ─────────────────────────────────────────────
-let activeScen = 'rcp85', activeYr = '2050', curRegion = null, curGlobal = null;
+let activeScen = 'rcp85', activeYr = '2030', curRegion = null, curGlobal = null;
+// NZ uses 2040/2090 timepoints; map them to nearest AUS/global timepoint
+function mapYr(dataset, yr) {
+  // For NZ data (keyed 2040/2090): map 2030→2040, 2050→2040, 2090→2090
+  if (dataset === 'NZ') {
+    if (yr === '2090') return 2090;
+    return 2040;
+  }
+  // For AUS data (keyed 2030/2090): map 2050→2030 (near-term)
+  if (dataset === 'AUS') {
+    if (yr === '2090') return 2090;
+    return 2030; // 2030 and 2050 both map to 2030 (near future)
+  }
+  return parseInt(yr);
+}
 
-// ── AUS data ──────────────────────────────────────────
+// ── AUS data (CSIRO NRM Clusters — Climate Change in Australia 2015) ─────────
+// Source: climatechangeinaustralia.gov.au | vs 1986–2005 baseline
+// RCP4.5 = intermediate mitigation; RCP8.5 = high emissions
+// 2030 = near future; 2090 = late century
 const AUS = {
-  'Northern Australia': {
-    bb:[-20,0,129,160],
-    rcp26:{
-      2030:{t:'+1.2°C',h:'+5d',p:'-5% drier',s:'+8cm',w:'Low–Moderate',x:'Moderate',wf:'Low'},
-      2050:{t:'+1.5°C',h:'+8d',p:'-7% drier',s:'+13cm',w:'Moderate',x:'Moderate',wf:'Low–Moderate'}
+  'Monsoonal North': {
+    bb:[-22,0,114,143],
+    rcp45:{
+      2030:{t:'+0.9°C',h:'+8d',p:'-5 to +6%',s:'+13cm',w:'Low–Moderate',x:'Moderate',wf:'Low'},
+      2090:{t:'+1.8°C',h:'+22d',p:'-8 to +10%',s:'+46cm',w:'Moderate',x:'High',wf:'Moderate'}
     },
     rcp85:{
-      2030:{t:'+1.4°C',h:'+8d',p:'-6% drier',s:'+10cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
-      2050:{t:'+2.5°C',h:'+20d',p:'-12% drier',s:'+25cm',w:'High',x:'High',wf:'Moderate–High'}
+      2030:{t:'+1.0°C',h:'+10d',p:'-6 to +8%',s:'+14cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
+      2090:{t:'+3.5°C',h:'+55d',p:'-18 to +22%',s:'+61cm',w:'High',x:'Very High',wf:'High'}
+    },
+    conf:{t:'hi',h:'hi',p:'lo',s:'hi',w:'med',x:'med'},
+    sea:{
+      Summer:'Intensified monsoon variability. Cyclone activity increases and shifts poleward. Flash flooding risk increases in coastal lowlands. Extreme wet-season rainfall events more frequent.',
+      Autumn:'Extended dry season onset. Savanna bushfire risk elevated. Reduced stream flows in major catchments.',
+      Winter:'Negligible rainfall. Water storage stress. Agricultural productivity constrained by heat accumulation.',
+      Spring:'Early season heat extremes. Increased evaporation. Storm season beginning earlier. Bushfire risk window expanding.'
+    },
+    water:'Declining dry-season flows in northern rivers. Increased flood–drought cycling. Saltwater intrusion risk in coastal aquifers as sea level rises.',
+    agri:'Sugarcane and horticulture face heat and water stress. Tropical fruit viability constrained under RCP 8.5. Cattle productivity declines with increased heat load days.',
+    risks:['Heat stress on livestock','Cyclone intensification','Coastal inundation','Aquifer salinisation','Monsoon season shifts']
+  },
+  'Wet Tropics': {
+    bb:[-20,-14.5,144,147.5],
+    rcp45:{
+      2030:{t:'+1.0°C',h:'+12d',p:'-8 to +5%',s:'+13cm',w:'Moderate',x:'High',wf:'Low'},
+      2090:{t:'+2.0°C',h:'+30d',p:'-12 to +8%',s:'+47cm',w:'High',x:'Very High',wf:'Moderate'}
+    },
+    rcp85:{
+      2030:{t:'+1.1°C',h:'+14d',p:'-10 to +6%',s:'+14cm',w:'Moderate',x:'High',wf:'Low–Moderate'},
+      2090:{t:'+4.0°C',h:'+75d',p:'-20 to +15%',s:'+63cm',w:'Very High',x:'Extreme',wf:'High'}
+    },
+    conf:{t:'hi',h:'hi',p:'lo',s:'hi',w:'med',x:'hi'},
+    sea:{
+      Summer:'Extreme rainfall events intensify. Flooding in Cairns and lowland areas. Coral bleaching on Great Barrier Reef escalates to annual events.',
+      Autumn:'Prolonged dry spells between cyclone events. Bushfire risk in hinterland elevated.',
+      Winter:'Mild dry season. Tourism peak but marine bleaching risk even in "cool" season under high warming.',
+      Spring:'Early fire season in hinterland. Marine heatwaves beginning earlier.'
+    },
+    water:'Wet season flooding paradoxically paired with dry season stress. Reef water temperature exceeding bleaching thresholds for longer periods.',
+    agri:'Sugarcane highly exposed. Tropical horticulture under heat and water stress. Agricultural labour productivity impacted by extreme heat.',
+    risks:['Great Barrier Reef collapse','Annual mass bleaching','Tropical cyclone intensification','Extreme rainfall flooding','Heat stress on agriculture']
+  },
+  'East Coast': {
+    bb:[-38,-19,150,155],
+    rcp45:{
+      2030:{t:'+0.9°C (0.6–1.2)',h:'+6d',p:'-14 to +3%',s:'+13cm (9–18)',w:'Low–Moderate',x:'Moderate',wf:'Moderate'},
+      2090:{t:'+1.9°C (1.3–2.5)',h:'+21d',p:'-18 to +9%',s:'+47cm (31–65)',w:'High',x:'High',wf:'High'}
+    },
+    rcp85:{
+      2030:{t:'+1.0°C (0.6–1.3)',h:'+7d',p:'-14 to +3%',s:'+14cm (9–18)',w:'Moderate',x:'High',wf:'Moderate'},
+      2090:{t:'+3.7°C (2.7–4.7)',h:'+55d',p:'-25 to +14%',s:'+65cm (45–87)',w:'Very High',x:'Very High',wf:'Very High'}
     },
     conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'med'},
     sea:{
-      Summer:'Intensified monsoon variability. Cyclone activity shifts poleward. Flash flooding risk increases in coastal lowlands.',
-      Autumn:'Extended dry season onset. Bushfire risk elevated in savanna zones. Reduced stream flows in major catchments.',
-      Winter:'Negligible rainfall. Water storage stress. Agricultural productivity constrained by heat accumulation.',
-      Spring:'Early season heat extremes. Increased evaporation. Storm season beginning earlier.'
-    },
-    water:'Declining dry-season flows in northern rivers. Increased flood–drought cycling. Saltwater intrusion risk in coastal aquifers.',
-    agri:'Sugarcane and horticulture face heat and water stress. Tropical fruit viability constrained under RCP 8.5. Cattle productivity declines with increased heat load.',
-    risks:['Heat stress on livestock','Cyclone intensification','Coastal inundation','Aquifer salinisation']
-  },
-  'Queensland': {
-    bb:[-30,-10,138,154],
-    rcp26:{
-      2030:{t:'+1.1°C',h:'+6d',p:'-4% drier',s:'+8cm',w:'Low–Moderate',x:'Moderate',wf:'Low–Moderate'},
-      2050:{t:'+1.4°C',h:'+9d',p:'-6% drier',s:'+13cm',w:'Moderate',x:'Moderate',wf:'Moderate'}
-    },
-    rcp85:{
-      2030:{t:'+1.3°C',h:'+9d',p:'-5% drier',s:'+10cm',w:'Moderate',x:'High',wf:'Moderate'},
-      2050:{t:'+2.8°C',h:'+28d',p:'-14% drier',s:'+27cm',w:'High',x:'Very High',wf:'High'}
-    },
-    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'hi'},
-    sea:{
-      Summer:'Extreme rainfall events intensify. Flood risk in Brisbane and coastal plains. Coral bleaching on Great Barrier Reef escalates.',
-      Autumn:'Prolonged dry spells. Bushfire risk in southeast Queensland elevated from October.',
+      Summer:'Extreme rainfall events intensify. Flood risk in Brisbane and Sydney coastal plains escalates. Coral bleaching extends south.',
+      Autumn:'Prolonged dry spells. Bushfire risk in southeast Queensland and northern NSW from October.',
       Winter:'Mild and dry. Water storage declining. Agricultural districts experience irrigation stress.',
       Spring:'Early fire season. Heat records broken more frequently. Heatwaves extend into October.'
     },
-    water:'Southern Queensland faces critical water security risk. Condamine–Balonne system stressed. SEQ Water Grid under sustained pressure by 2050.',
-    agri:'Sugarcane, macadamia, and subtropical horticulture highly exposed. Cotton industry faces increasing water allocation competition.',
-    risks:['Reef ecosystem collapse','Extreme rainfall flooding','Prolonged drought','Urban heat island effect']
+    water:'SEQ Water Grid under sustained pressure by 2050+. Sydney catchments face increased variability. Desalination increasingly relied upon.',
+    agri:'Sugarcane, macadamia, and subtropical horticulture highly exposed. Cotton faces increasing water allocation competition. Wine grape regions shift south.',
+    risks:['Reef ecosystem collapse','Extreme rainfall flooding','Prolonged drought','Urban heat island effect','Coastal erosion']
   },
-  'New South Wales': {
-    bb:[-38,-27,140,154],
-    rcp26:{
-      2030:{t:'+1.1°C',h:'+8d',p:'-5% drier',s:'+8cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
-      2050:{t:'+1.5°C',h:'+12d',p:'-8% drier',s:'+13cm',w:'Moderate',x:'High',wf:'Moderate'}
+  'Central Slopes': {
+    bb:[-33,-22,145,150],
+    rcp45:{
+      2030:{t:'+1.0°C (0.6–1.3)',h:'+31d (Dubbo)',p:'-11 to +7%',s:'+13cm',w:'Moderate',x:'High',wf:'High'},
+      2090:{t:'+2.1°C (1.4–2.7)',h:'+44d (Dubbo)',p:'-16 to +6%',s:'+46cm',w:'High',x:'Very High',wf:'Very High'}
     },
     rcp85:{
-      2030:{t:'+1.3°C',h:'+11d',p:'-7% drier',s:'+10cm',w:'Moderate',x:'High',wf:'Moderate–High'},
-      2050:{t:'+3.0°C',h:'+35d',p:'-18% drier',s:'+28cm',w:'High',x:'Very High',wf:'Very High'}
+      2030:{t:'+1.1°C (0.7–1.5)',h:'+35d (Dubbo)',p:'-11 to +7%',s:'+14cm',w:'High',x:'Very High',wf:'High'},
+      2090:{t:'+4.2°C (3.0–5.4)',h:'+65d (Dubbo)',p:'-23 to +18%',s:'+62cm',w:'Very High',x:'Extreme',wf:'Extreme'}
     },
-    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'hi',x:'hi'},
     sea:{
-      Summer:'Extreme heat events multiply. Sydney faces dangerous heatwave days. Bushfire conditions worsen dramatically.',
-      Autumn:'Prolonged drought periods. Murray–Darling system at risk. Dust storm frequency increases.',
-      Winter:'Snowpack decline in Snowy Mountains. Ski season shortens significantly by 2050.',
-      Spring:'Peak fire danger season extends. Record September–October temperatures projected.'
+      Summer:'Severe heat across the slopes. Days over 40°C increase dramatically. Livestock heat stress critical. Cotton and grain crops stressed.',
+      Autumn:'Extended dry. Stream flows decline. Irrigation allocations reduced. Bushfire risk very high.',
+      Winter:'Warming winters. Frost events fewer — benefit for some crops but pest pressures increase.',
+      Spring:'Fire season starts earlier. Soil moisture deficits deepen. Grain cropping window narrows.'
     },
-    water:'Murray–Darling Basin water security critically threatened. Sydney Catchment under pressure. Groundwater depletion accelerates in western plains.',
-    agri:'Wheat, wine grapes, and mixed farming highly exposed. Hunter Valley viticulture at significant risk. Irrigation water availability declines markedly.',
-    risks:['Catastrophic bushfire conditions','Severe drought','Murray-Darling ecosystem collapse','Flash flooding in urban areas']
+    water:'Inland rivers (Macquarie, Namoi, Darling) under severe stress. Irrigation entitlement security declining. Groundwater recharge reducing.',
+    agri:'NSW inland cropping (wheat, cotton, sorghum) facing major heat and water stress. Beef grazing viability declining in hot summers.',
+    risks:['Extreme heat (>40°C)','Irrigation water scarcity','Bushfire risk','Flood-drought cycling','Livestock mortality']
   },
-  'Victoria': {
-    bb:[-39,-33,140,150],
-    rcp26:{
-      2030:{t:'+1.0°C',h:'+7d',p:'-6% drier',s:'+7cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
-      2050:{t:'+1.4°C',h:'+11d',p:'-10% drier',s:'+12cm',w:'Moderate',x:'High',wf:'High'}
+  'Murray Basin': {
+    bb:[-37,-28,139,150],
+    rcp45:{
+      2030:{t:'+0.8°C (0.6–1.1)',h:'+12d (Canberra)',p:'-9 to +5%',s:'+12cm (8–16)',w:'Moderate',x:'High',wf:'High'},
+      2090:{t:'+1.8°C (1.3–2.4)',h:'+17d (Canberra)',p:'-16 to +4%',s:'+45cm (28–63)',w:'High',x:'Very High',wf:'Very High'}
     },
     rcp85:{
-      2030:{t:'+1.2°C',h:'+10d',p:'-8% drier',s:'+9cm',w:'Moderate',x:'High',wf:'High'},
-      2050:{t:'+2.8°C',h:'+32d',p:'-22% drier',s:'+25cm',w:'High',x:'Very High',wf:'Very High'}
+      2030:{t:'+0.9°C (0.7–1.3)',h:'+13d (Canberra)',p:'-9 to +5%',s:'+13cm (8–17)',w:'High',x:'Very High',wf:'Very High'},
+      2090:{t:'+3.8°C (2.7–4.5)',h:'+29d (Canberra)',p:'-27 to +9%',s:'+60cm (39–83)',w:'Very High',x:'Extreme',wf:'Extreme'}
     },
-    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'hi',x:'hi'},
     sea:{
-      Summer:'Melbourne\'s 40°+ days double by 2050 under RCP 8.5. Bushfire risk in ranges reaches catastrophic levels.',
-      Autumn:'Prolonged dry period. Alpine ash dieback accelerates. Rainfall-runoff relationships shift significantly.',
-      Winter:'Reduced snowpack. Rainfall below historical averages. Hydropower capacity constrained.',
-      Spring:'Early heat events. Grassland fire danger elevated. Spring rainfall increasingly variable.'
+      Summer:'Extreme heat across the basin. Murray river flows declining. Alpine snowmelt reduced. Irrigation under critical pressure.',
+      Autumn:'Extended dry. Megafire risk in alpine and foothill areas. Agricultural districts stressed.',
+      Winter:'Reduced snowpack in Australian Alps. Spring water supply reducing for irrigation-dependent agriculture.',
+      Spring:'Earlier melt reduces effective water storage. Soil moisture deficits develop earlier.'
     },
-    water:'Thompson and Yarra catchments face declining inflows. Melbourne water security stressed. Alpine water towers weakening.',
-    agri:'Dairy industry under severe stress from heat and water shortages. Wine regions face quality and viability challenges. Broadacre cropping significantly disrupted.',
-    risks:['Catastrophic bushfire (as severe as 2019-20)','Water supply crisis','Alpine ecosystem loss','Agricultural system disruption']
+    water:'Murray–Darling Basin water security at existential risk. Alpine snowmelt water tower weakening rapidly. Lower average inflows projected.',
+    agri:'Most agriculturally exposed region in Australia. Broadacre cropping, dairy, stone fruits all significantly stressed. Rice and cotton viability at risk.',
+    risks:['Megafire frequency','Murray-Darling flow collapse','Alpine ecosystem loss','Irrigation system failure','Livestock heat mortality']
   },
-  'South Australia': {
-    bb:[-38,-25,128,141],
-    rcp26:{
-      2030:{t:'+1.1°C',h:'+9d',p:'-7% drier',s:'+8cm',w:'Moderate',x:'High',wf:'Moderate'},
-      2050:{t:'+1.6°C',h:'+14d',p:'-11% drier',s:'+13cm',w:'High',x:'High',wf:'High'}
+  'Rangelands': {
+    bb:[-35,-15,114,143],
+    rcp45:{
+      2030:{t:'+1.0°C (0.6–1.4)',h:'+113d/yr (Alice)',p:'-11 to +6%',s:'+12cm (7–16)',w:'High',x:'High',wf:'Moderate'},
+      2090:{t:'+2.1°C (1.5–2.9)',h:'+133d/yr (Alice)',p:'-15 to +7%',s:'+46cm (28–64)',w:'Very High',x:'Very High',wf:'High'}
     },
     rcp85:{
-      2030:{t:'+1.4°C',h:'+13d',p:'-9% drier',s:'+10cm',w:'High',x:'High',wf:'High'},
-      2050:{t:'+3.2°C',h:'+40d',p:'-25% drier',s:'+27cm',w:'Very High',x:'Very High',wf:'Very High'}
+      2030:{t:'+1.0°C (0.8–1.4)',h:'+115d/yr (Alice)',p:'-11 to +6%',s:'+13cm (7–16)',w:'Very High',x:'Very High',wf:'High'},
+      2090:{t:'+4.3°C (2.9–5.3)',h:'+168d/yr (Alice)',p:'-32 to +18%',s:'+61cm (40–84)',w:'Extreme',x:'Extreme',wf:'Very High'}
     },
-    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    conf:{t:'hi',h:'hi',p:'lo',s:'hi',w:'hi',x:'hi'},
     sea:{
-      Summer:'Extreme and prolonged heatwaves. Adelaide 45°+ days triple by 2050. Electricity grid stress at critical peak.',
-      Autumn:'Declining autumn break in rains. Agricultural planting windows narrow.',
-      Winter:'Reduced winter rainfall. Murray mouth flows at historic lows. Coorong ecosystem degradation.',
-      Spring:'Extended dry spring. Catastrophic fire risk across scrublands and mallee.'
+      Summer:'Already extreme heat (94 days >35°C in Alice Springs). Heat extremes becoming unsurvivable without cooling. Dust storms intensifying.',
+      Autumn:'Extended dry. Pastoral station viability declining. Wildfire risk in spinifex and mulga landscapes.',
+      Winter:'Warming winters bring some relief but summer extremes far outweigh benefit. Night temperatures increasingly hot.',
+      Spring:'Fire risk window expanding. Evapotranspiration increasing. Pastoral water points drying earlier.'
     },
-    water:'Murray River inflows decline. Adelaide\'s water security critically dependent on desalination. Rural water supply at existential risk under RCP 8.5.',
-    agri:'Barossa and Clare Valley wine regions face viability challenges. Grain belt productivity declines 20–40%. Sheep and beef cattle stations under heat and feed stress.',
-    risks:['Extreme prolonged heatwaves','Murray River system collapse','Desertification risk','Agricultural viability loss']
+    water:'Artesian basin pressure declining. Remote community water security increasingly precarious. Pastoral water infrastructure stressed.',
+    agri:'Extensive pastoral grazing is primary industry. Carrying capacity declining with increased heat stress. Destocking during extreme events increasing.',
+    risks:['Unsurvivable heat events','Artesian water decline','Pastoral viability loss','Remote community infrastructure','Dust storm intensification']
   },
-  'Western Australia': {
-    bb:[-35,-13,112,130],
-    rcp26:{
-      2030:{t:'+1.1°C',h:'+7d',p:'-8% drier (SW)',s:'+8cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
-      2050:{t:'+1.5°C',h:'+11d',p:'-14% drier (SW)',s:'+13cm',w:'High',x:'High',wf:'Moderate–High'}
+  'Southern & South-Western Flatlands': {
+    bb:[-38,-27,113,121],
+    rcp45:{
+      2030:{t:'+0.9°C',h:'+10d',p:'-10 to +5% (SW drier)',s:'+12cm',w:'High',x:'High',wf:'High'},
+      2090:{t:'+1.9°C',h:'+25d',p:'-20 to +6% (SW drier)',s:'+45cm',w:'Very High',x:'Very High',wf:'Very High'}
     },
     rcp85:{
-      2030:{t:'+1.3°C',h:'+10d',p:'-10% drier (SW)',s:'+10cm',w:'High',x:'High',wf:'High'},
-      2050:{t:'+3.0°C',h:'+30d',p:'-25% drier (SW)',s:'+26cm',w:'Very High',x:'Very High',wf:'Very High'}
+      2030:{t:'+1.0°C',h:'+12d',p:'-12 to +5% (SW drier)',s:'+13cm',w:'Very High',x:'Very High',wf:'Very High'},
+      2090:{t:'+3.8°C',h:'+55d',p:'-30 to +10% (SW drier)',s:'+61cm',w:'Extreme',x:'Extreme',wf:'Extreme'}
     },
-    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    conf:{t:'hi',h:'hi',p:'hi (SW)',s:'hi',w:'hi',x:'hi'},
     sea:{
-      Summer:'Extreme northwest heat. Increasing tropical cyclone intensity. Pilbara heatwaves become life-threatening.',
-      Autumn:'Southwest losing autumn rainfall signal. Perth winter rainfall beginning significantly later.',
-      Winter:'Southwest winter rainfall has declined 20% since 1970 — trend accelerates. Drying fastest of any world region.',
-      Spring:'Perth no longer reliably green in spring by 2050 under RCP 8.5. Bushfire risk rises in jarrah forests.'
+      Summer:'SW WA rainfall declines are now observed and accelerating. Extreme heat across wheat belt. Fire risk very high.',
+      Autumn:'Delayed growing season rains. Crop planting windows narrowing. SA mallee under extreme fire risk.',
+      Winter:'Critical growing season rainfall declining with very high confidence in SW WA. Wheat yields threatened.',
+      Spring:'Dry springs becoming the norm in SW WA. Frost risk reducing but heat during grain filling increasing.'
     },
-    water:'Perth faces acute water security challenge. Gnangara Mound aquifer declining. Desalination already supplies 50% of Perth water — this will need to increase.',
-    agri:'Wheatbelt facing abandonment risk in southern areas. Viticulture in Margaret River challenged. Pastoral stations stressed.',
-    risks:['Permanent drying of southwest WA','Perth water security crisis','Wheatbelt viability loss','Intensifying northwest cyclones']
+    water:'SW WA has already lost ~20% of its annual rainfall since 1970s — a documented trend now accelerating. Perth reliant on desalination.',
+    agri:'WA wheatbelt and SA grain belt face major yield losses. Lupin, barley, and canola already being affected by rainfall decline.',
+    risks:['SW WA rainfall collapse','Wheatbelt crop failure','Extreme fire conditions','Water supply for Perth','Soil acidification acceleration']
   },
-  'Tasmania': {
-    bb:[-44,-39,143,149],
-    rcp26:{
-      2030:{t:'+0.8°C',h:'+3d',p:'+2% wetter',s:'+7cm',w:'Low',x:'Low',wf:'Low'},
-      2050:{t:'+1.1°C',h:'+5d',p:'+3% wetter',s:'+12cm',w:'Low–Moderate',x:'Moderate',wf:'Low–Moderate'}
+  'Southern Slopes': {
+    bb:[-44,-34,139,153],
+    rcp45:{
+      2030:{t:'+0.6°C (0.5–0.9)',h:'+13d (Melb)',p:'-7 to +4%',s:'+12cm (8–16)',w:'Moderate',x:'High',wf:'High'},
+      2090:{t:'+1.5°C (1.1–2.0)',h:'+16d (Melb)',p:'-10 to +3%',s:'+46cm (29–63)',w:'High',x:'Very High',wf:'Very High'}
     },
     rcp85:{
-      2030:{t:'+1.0°C',h:'+4d',p:'+1% wetter',s:'+9cm',w:'Low',x:'Moderate',wf:'Low–Moderate'},
-      2050:{t:'+2.2°C',h:'+15d',p:'-5% drier (east)',s:'+24cm',w:'Moderate',x:'High',wf:'Moderate'}
+      2030:{t:'+0.8°C (0.5–1.1)',h:'+14d (Melb)',p:'-7 to +4%',s:'+13cm (8–18)',w:'High',x:'Very High',wf:'Very High'},
+      2090:{t:'+3.1°C (2.5–4.0)',h:'+24d (Melb)',p:'-19 to +5%',s:'+61cm (41–83)',w:'Very High',x:'Extreme',wf:'Extreme'}
     },
-    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'med'},
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'hi',x:'hi'},
     sea:{
-      Summer:'Warming brings increased mainland-style extreme heat days. Fire risk rises in dry eastern districts.',
-      Autumn:'Extended growing season. Wine production improving quality in short term.',
-      Winter:'Snowpack declining at altitude. Hydro Tasmania storage potentially constrained.',
-      Spring:'Early warming. Phenological mismatch risks for endemic species.'
+      Summer:'Melbourne heatwaves intensifying. Black Saturday-type conditions more frequent. Alpine ecosystems under severe stress. Snowpack in rapid decline.',
+      Autumn:'Fire season extending into autumn. Rainfall variability increasing. Farming calendar disruption.',
+      Winter:'Reduced snowpack in Victorian Alps. Tasmania warms faster than historical average. Ski industry viability declining.',
+      Spring:'Earlier spring warming. Bushfire season begins earlier. Alpine wildflower and ecosystem timing disrupted.'
     },
-    water:'Currently water-secure. Hydro system may face reduced storage under extended drying in eastern catchments. Western rivers remain robust.',
-    agri:'Near-term agriculture opportunity as warming opens new crop suitability windows. Wine quality improving. Long-term risk from increased fire frequency.',
-    risks:['Endemic species extinction risk','Wildfire in dry east','Ocean acidification impacts on aquaculture','Sea level risk to coastal settlements']
-  },
-  'ACT': {
-    bb:[-36,-35,148,149],
-    rcp26:{
-      2030:{t:'+1.1°C',h:'+8d',p:'-5% drier',s:'+7cm',w:'Moderate',x:'Moderate',wf:'High'},
-      2050:{t:'+1.5°C',h:'+13d',p:'-9% drier',s:'+12cm',w:'Moderate',x:'High',wf:'High'}
-    },
-    rcp85:{
-      2030:{t:'+1.3°C',h:'+11d',p:'-7% drier',s:'+9cm',w:'Moderate',x:'High',wf:'High'},
-      2050:{t:'+2.9°C',h:'+36d',p:'-20% drier',s:'+25cm',w:'High',x:'Very High',wf:'Very High'}
-    },
-    conf:{t:'hi',h:'hi',p:'hi',s:'med',w:'med',x:'hi'},
-    sea:{
-      Summer:'Extreme heat events in Canberra intensify. Fire-smoke events increase. Western bushfire flanks threaten suburbs.',
-      Autumn:'Extended dry period. Fire risk elevated through May.',
-      Winter:'Cooler winters persist but snowfall in Brindabellas declines.',
-      Spring:'Peak fire danger. October heat records broken. Urban greening under water stress.'
-    },
-    water:'ACT Reservoir inflows declining. Water efficiency critical. Murrumbidgee water sharing under stress.',
-    agri:'High-value cool-climate production stressed. Summer heat curtails certain vegetable crops.',
-    risks:['Suburban bushfire interface','Heat-related health emergencies','Declining water security','Smoke health events']
-  },
-  'Northern Territory': {
-    bb:[-26,-10,128,138],
-    rcp26:{
-      2030:{t:'+1.2°C',h:'+7d',p:'-4% drier',s:'+8cm',w:'Moderate',x:'Moderate',wf:'Low'},
-      2050:{t:'+1.6°C',h:'+11d',p:'-6% drier',s:'+13cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
-    },
-    rcp85:{
-      2030:{t:'+1.5°C',h:'+12d',p:'-5% drier',s:'+10cm',w:'High',x:'High',wf:'Low–Moderate'},
-      2050:{t:'+2.8°C',h:'+35d',p:'-14% drier',s:'+26cm',w:'Very High',x:'Very High',wf:'Moderate'}
-    },
-    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'hi',x:'med'},
-    sea:{
-      Summer:'Wet season intensification. Flooding in Darwin hinterland and Katherine more frequent.',
-      Autumn:'Rapid transition to extreme dry. Fire season begins earlier across Top End.',
-      Winter:'Extremely dry. Temperature extremes in interior. Tourism window narrows.',
-      Spring:'Interior exceeds 45°C increasingly. Fire risk in spinifex grasslands extreme.'
-    },
-    water:'Darwin water supply secure short-term. Interior groundwater increasingly stressed. Tiwi Islands face freshwater lens salinisation.',
-    agri:'Pastoral industry (cattle) highly exposed to heat stress and water scarcity. Mango production faces phenological disruption.',
-    risks:['Wet season flooding','Interior lethal heat','Pastoral industry collapse','Coastal inundation (Darwin)']
-  },
-  'Southwest WA': {
-    bb:[-35,-28,114,122],
-    rcp26:{
-      2030:{t:'+1.0°C',h:'+8d',p:'-10% drier',s:'+8cm',w:'High',x:'High',wf:'Moderate'},
-      2050:{t:'+1.4°C',h:'+13d',p:'-16% drier',s:'+13cm',w:'High',x:'High',wf:'Moderate–High'}
-    },
-    rcp85:{
-      2030:{t:'+1.2°C',h:'+12d',p:'-12% drier',s:'+10cm',w:'Very High',x:'High',wf:'High'},
-      2050:{t:'+2.8°C',h:'+36d',p:'-30% drier',s:'+26cm',w:'Very High',x:'Very High',wf:'Very High'}
-    },
-    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
-    sea:{
-      Summer:'Prolonged extreme heat. Perth heatwaves of 40°+ now multi-week events. Wildfire risk in jarrah forest.',
-      Autumn:'Rainfall onset delayed by weeks to months. Agricultural stress acute.',
-      Winter:'Winter rainfall reduced 15–30%. Rivers flow for shorter periods. This is the defining climate signal of the region.',
-      Spring:'Late and reduced spring rains. Grassland fires. Wildflower season disrupted.'
-    },
-    water:'The world\'s fastest-drying temperate region. Perth metropolitan water supply critically stressed. Full desalination dependency scenario by 2050.',
-    agri:'Margaret River wine industry faces 1.5–2°C warming over optimal. Wheatbelt — the breadbasket of WA — faces 20–40% yield decline.',
-    risks:['Permanent drying','Water supply failure','Wine region viability','Jarrah forest dieback']
-  },
-  'Southeast Australia': {
-    bb:[-40,-30,144,151],
-    rcp26:{
-      2030:{t:'+1.1°C',h:'+8d',p:'-6% drier',s:'+8cm',w:'Moderate',x:'High',wf:'High'},
-      2050:{t:'+1.5°C',h:'+13d',p:'-10% drier',s:'+13cm',w:'High',x:'High',wf:'High'}
-    },
-    rcp85:{
-      2030:{t:'+1.3°C',h:'+11d',p:'-8% drier',s:'+10cm',w:'High',x:'High',wf:'Very High'},
-      2050:{t:'+3.0°C',h:'+38d',p:'-22% drier',s:'+28cm',w:'Very High',x:'Very High',wf:'Very High'}
-    },
-    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
-    sea:{
-      Summer:'The Black Summer scenario (2019-20) becomes the new baseline rather than a once-in-a-century event.',
-      Autumn:'Prolonged dry. Catchment replenishment fails. Alpine areas stressed.',
-      Winter:'Reduced winter snow. Snowy Hydro yield constrained. Reduced water availability downstream.',
-      Spring:'Peak fire danger extends. October–November fire conditions match historical January peaks.'
-    },
-    water:'Murray–Darling Basin water security at existential risk. Alpine snowmelt water tower weakening rapidly.',
-    agri:'Most agriculturally exposed region in Australia. Broadacre cropping, dairy, stone fruits all significantly stressed.',
-    risks:['Megafire frequency','Murray-Darling collapse','Alpine ecosystem loss','Irrigation system failure']
+    water:'Melbourne catchment inflows declining significantly. Thomson catchment rainfall-runoff relationship shifting. Desalination now a permanent fixture.',
+    agri:'Dairy (Gippsland), wine (Yarra Valley, Mornington) and horticulture face increasing heat and water stress. Heatwave-driven livestock losses increasing.',
+    risks:['Megafire conditions','Alpine snowpack loss','Melbourne water supply','Dairy industry heat stress','Coastal erosion (Bass Strait)']
   }
 };
 
-// ── NZ data ───────────────────────────────────────────
+// ── NZ data (NIWA zones — NZ Climate Change Projections 2018/2022) ──────────
+// Source: NIWA | Timepoints: 2040, 2090 | Baseline: 1986–2005
+// RCP4.5 = moderate mitigation; RCP8.5 = high emissions
 const NZ = {
-  'Northland / Auckland': {
-    bb:[-38,-34,173,176],
-    rcp26:{
-      2030:{t:'+0.9°C',h:'+5d',p:'+3% wetter',s:'+8cm',w:'Low',x:'Low–Moderate',wf:'Low'},
-      2050:{t:'+1.2°C',h:'+8d',p:'+4% wetter',s:'+13cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+  'Northland & Auckland': {
+    bb:[-37.5,-34,173,176],
+    rcp45:{
+      2040:{t:'+0.7–0.9°C',h:'+10–20d',p:'+3–5% wetter (winter)',s:'+24cm',w:'Low–Moderate',x:'Moderate',wf:'Low'},
+      2090:{t:'+1.3–1.4°C',h:'+25–30d',p:'+5–10% wetter',s:'+55cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
     },
     rcp85:{
-      2030:{t:'+1.1°C',h:'+7d',p:'+4% wetter',s:'+10cm',w:'Low–Moderate',x:'Moderate',wf:'Low'},
-      2050:{t:'+2.2°C',h:'+22d',p:'+8% wetter',s:'+26cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+      2040:{t:'+0.8–1.1°C',h:'+15–20d',p:'+4–6% wetter (winter)',s:'+28cm',w:'Moderate',x:'Moderate',wf:'Low–Moderate'},
+      2090:{t:'+2.8–3.1°C',h:'+50–70d',p:'+10–18% wetter',s:'+79cm',w:'High',x:'Very High',wf:'Moderate'}
     },
-    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'med'},
     sea:{
-      Summer:'Increased extreme rainfall events. Auckland flooding risk elevated. More intense cyclone remnants.',
-      Autumn:'Cyclone-driven rain. Long dry spells between events.',
-      Winter:'Milder winters. Frost-free days increase. Some agricultural benefit short-term.',
-      Spring:'Earlier spring warmth. Phenological advance. Subtropical species range expanding southward.'
+      Summer:'More intense drought risk in drier periods. Marine heatwaves increasingly frequent in Hauraki Gulf. Urban heat stress in Auckland amplifies.',
+      Autumn:'Increased rainfall intensity. Auckland flood risk growing (2023 Auckland floods a preview). Tropical cyclone remnants tracking further south.',
+      Winter:'Warmer and wetter winters. Flooding risk elevated. Fewer cold nights. Some agricultural benefit but disease pressure increases.',
+      Spring:'Earlier seasonal warming. Fire risk in drier years. Growing season extends but water availability variable.'
     },
-    water:'Auckland water supply relatively secure but demand growth + variability challenge Watercare infrastructure.',
-    agri:'Subtropical crop expansion opportunity. Kiwifruit, avocado range expanding. Soil moisture stress during dry spells.',
-    risks:['Coastal flooding (Tāmaki lowlands)','Cyclone intensification','Urban flooding','Marine heatwaves']
+    water:'Auckland water supply increasingly dependent on storage management. Droughts in summer offset by heavier winter rain. Water quality risks from intense storms.',
+    agri:'Subtropical cropping expanding northward. Kiwifruit and avocado viability extending. Viticulture conditions changing. Pest and disease pressure increasing.',
+    risks:['Auckland urban flooding','Summer drought intensification','Marine ecosystem warming','Cyclone remnant impacts','Infrastructure heat stress']
   },
-  'Waikato / Bay of Plenty': {
-    bb:[-39,-36,174,178],
-    rcp26:{
-      2030:{t:'+0.9°C',h:'+4d',p:'+2% wetter',s:'+8cm',w:'Low',x:'Moderate',wf:'Low'},
-      2050:{t:'+1.2°C',h:'+7d',p:'+3% wetter',s:'+13cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+  'Waikato & Bay of Plenty': {
+    bb:[-39,-37.5,174,178],
+    rcp45:{
+      2040:{t:'+0.7–0.9°C',h:'+8–18d',p:'+2–4% wetter',s:'+24cm',w:'Low',x:'Moderate',wf:'Low'},
+      2090:{t:'+1.3–1.4°C',h:'+20–28d',p:'+3–8% wetter',s:'+55cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
     },
     rcp85:{
-      2030:{t:'+1.1°C',h:'+6d',p:'+3% wetter',s:'+10cm',w:'Low–Moderate',x:'Moderate',wf:'Low'},
-      2050:{t:'+2.1°C',h:'+20d',p:'+6% wetter',s:'+25cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+      2040:{t:'+0.8–1.1°C',h:'+12–20d',p:'+2–5% wetter',s:'+28cm',w:'Low–Moderate',x:'Moderate',wf:'Low–Moderate'},
+      2090:{t:'+2.8–3.1°C',h:'+45–60d',p:'+6–15% wetter',s:'+79cm',w:'Moderate',x:'Very High',wf:'Moderate'}
     },
-    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'med'},
     sea:{
-      Summer:'More intense rainfall events. Bay of Plenty coast flooding. Marine heatwaves affect aquaculture.',
-      Autumn:'Cyclone season extends. Dairy farms face winter feed challenges.',
-      Winter:'Milder. Some regions lose reliable winter chilling for deciduous fruit.',
-      Spring:'Earlier spring growth. Dairy system calendar disruption.'
+      Summer:'Increased drought risk in eastern Bay of Plenty. Coastal erosion accelerating. Tauranga and Rotorua region water stress in dry summers.',
+      Autumn:'Heavier rainfall events. Bay of Plenty flooding risk. Kiwifruit growing season extending but pest risk increases.',
+      Winter:'Milder winters. Fewer frost events across the Waikato plains. Dairy industry summer heat stress beginning to offset winter gains.',
+      Spring:'Earlier pasture growth but more variable rainfall. Spring flooding events more intense in western catchments.'
     },
-    water:'Waikato River under allocation pressure. Lake Taupo nitrogen management intersects with climate variability.',
-    agri:'NZ\'s dairy heartland highly exposed to rainfall variability. Kiwifruit and avocado production faces new pest and disease pressures.',
-    risks:['Dairy industry disruption','Aquaculture losses','Cyclone-driven flooding','Coastal erosion']
+    water:'Waikato River system under pressure from land use and climate. Eastern BOP drier summers requiring irrigation expansion. Aquifer drawdown increasing.',
+    agri:'Dairy farming (Waikato) faces heat stress and feed challenges. Kiwifruit acreage expanding but frost risk declining changes phenology.',
+    risks:['Tauranga coastal flooding','Eastern drought intensification','Dairy heat stress','Geothermal system interactions','River flooding']
   },
-  'Wellington / Manawatū': {
-    bb:[-41,-38,174,177],
-    rcp26:{
-      2030:{t:'+0.8°C',h:'+3d',p:'-2% drier (east)',s:'+8cm',w:'Low',x:'Moderate',wf:'Low'},
-      2050:{t:'+1.1°C',h:'+5d',p:'-3% drier (east)',s:'+13cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+  'Central & Eastern North Island': {
+    bb:[-41,-38.5,175,178.5],
+    rcp45:{
+      2040:{t:'+0.7–0.9°C',h:'+8–15d',p:'-5 to +3% drier (east)',s:'+24cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
+      2090:{t:'+1.3–1.4°C',h:'+18–28d',p:'-10 to +5% (east drier)',s:'+55cm',w:'High',x:'High',wf:'High'}
     },
     rcp85:{
-      2030:{t:'+1.0°C',h:'+4d',p:'-3% drier (east)',s:'+10cm',w:'Low',x:'Moderate',wf:'Low'},
-      2050:{t:'+2.0°C',h:'+16d',p:'-8% drier (east)',s:'+26cm',w:'Moderate',x:'High',wf:'Low'}
+      2040:{t:'+0.8–1.0°C',h:'+10–18d',p:'-6 to +3%',s:'+28cm',w:'Moderate',x:'High',wf:'Moderate'},
+      2090:{t:'+2.7–3.0°C',h:'+40–55d',p:'-18 to +8%',s:'+79cm',w:'Very High',x:'Very High',wf:'Very High'}
     },
-    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'hi'},
     sea:{
-      Summer:'Increased extreme wind events. Cook Strait conditions more variable. Drought risk in Wairarapa.',
-      Autumn:'Increased storminess. Wellington infrastructure exposed to wind and rain events.',
-      Winter:'Reduced snowfall on Tararua ranges.',
-      Spring:'Faster spring warming. Increased biological productivity.'
+      Summer:'Eastern regions (Hawke's Bay, Gisborne) face intensifying drought. Extreme fire risk in dry years. Heat stress on hill country livestock.',
+      Autumn:'Post-drought heavy rainfall events (like Cyclone Gabrielle 2023) becoming more frequent. Flood-drought cycles amplifying.',
+      Winter:'Mild winters. Taupo plateau frost events declining. Snow cover on central plateau reducing.',
+      Spring:'Variable — drought risk emerging earlier in eastern regions. Crop establishment windows narrowing in drier years.'
     },
-    water:'Generally adequate but eastern Wairarapa faces increasing drought stress.',
-    agri:'Sheep and beef farming faces summer drought stress in Wairarapa and Hawke\'s Bay extension.',
-    risks:['Earthquake + flood compound risk','Wellington infrastructure exposure','Coastal erosion','Increased wind extremes']
+    water:'Hawke's Bay irrigation demand escalating. River systems (Ngaruroro, Tukituki) under severe summer stress. Groundwater overallocation worsening.',
+    agri:'Apples, grapes, stone fruit (Hawke's Bay) facing heat and water stress. Sheep and beef hill country viability declining in drought years.',
+    risks:['Cyclone-scale flooding','Prolonged drought (east)','Orchard viability','Hill country erosion','River system depletion']
   },
-  'Canterbury / Marlborough': {
-    bb:[-44,-41,170,174],
-    rcp26:{
-      2030:{t:'+0.9°C',h:'+6d',p:'-5% drier',s:'+7cm',w:'Moderate',x:'Moderate',wf:'Low'},
-      2050:{t:'+1.2°C',h:'+10d',p:'-8% drier',s:'+12cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+  'Wellington & Marlborough': {
+    bb:[-43,-40,173,177],
+    rcp45:{
+      2040:{t:'+0.7–0.9°C',h:'+5–12d',p:'-3 to +4%',s:'+24cm',w:'Low–Moderate',x:'Moderate',wf:'Moderate'},
+      2090:{t:'+1.3–1.4°C',h:'+15–25d',p:'-8 to +6%',s:'+55cm',w:'Moderate',x:'High',wf:'High'}
     },
     rcp85:{
-      2030:{t:'+1.1°C',h:'+9d',p:'-7% drier',s:'+9cm',w:'Moderate',x:'High',wf:'Low–Moderate'},
-      2050:{t:'+2.4°C',h:'+28d',p:'-18% drier',s:'+24cm',w:'High',x:'Very High',wf:'Moderate'}
+      2040:{t:'+0.8–1.0°C',h:'+8–15d',p:'-4 to +5%',s:'+28cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
+      2090:{t:'+2.7–3.0°C',h:'+35–50d',p:'-15 to +10%',s:'+79cm',w:'High',x:'Very High',wf:'Very High'}
     },
-    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'med'},
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'med'},
     sea:{
-      Summer:'Alpine snowmelt accelerated. Canterbury Plains irrigation under pressure. Nor\'wester events more intense.',
-      Autumn:'Harvest conditions changing. Marlborough wine harvest earlier.',
-      Winter:'Reduced snowpack in Southern Alps. Spring water supply reducing.',
-      Spring:'Earlier melt. Soil moisture deficits developing earlier in season.'
+      Summer:'Marlborough Sounds summer heat increasing. Wellington wind patterns intensifying. Fire risk in drier Wairau Valley.',
+      Autumn:'Rainfall variability increasing. Coastal flooding in lower Wellington more frequent. Earthquake-climate compound risk.',
+      Winter:'Milder winters. Cook Strait conditions more variable. Sea level rise accelerating coastal erosion in Marlborough.',
+      Spring:'Viticulture season extending. Early season water availability variable in Marlborough.'
     },
-    water:'Canterbury\'s irrigation-dependent agriculture dependent on Southern Alps snowpack — now declining. Aquifer recharge patterns shifting.',
-    agri:'Marlborough Sauvignon Blanc faces quality risk as temperatures rise. Canterbury wheat and seed crops affected by increasing summer drought.',
-    risks:['Alpine snowpack decline','Irrigation water scarcity','Wine quality degradation','Increased flood-drought cycling']
+    water:'Marlborough Sounds marine environment warming. Wairau aquifer stress in dry years. Wellington coastal flooding increasing.',
+    agri:'Marlborough wine region (Sauvignon Blanc) facing harvest timing and quality changes. Viticulture window extending but heat stress risk emerging.',
+    risks:['Wellington coastal inundation','Marlborough drought','Vineyard viability changes','Cook Strait intensification','Compound earthquake-flood risk']
   },
-  'Otago / Southland': {
-    bb:[-47,-43,167,172],
-    rcp26:{
-      2030:{t:'+0.8°C',h:'+4d',p:'-3% drier',s:'+7cm',w:'Low',x:'Low–Moderate',wf:'Low'},
-      2050:{t:'+1.1°C',h:'+7d',p:'-5% drier',s:'+12cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+  'Eastern South Island': {
+    bb:[-46,-42,170,174],
+    rcp45:{
+      2040:{t:'+0.7–0.9°C',h:'+5–15d',p:'-5 to +3% (Canterbury drier)',s:'+24cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
+      2090:{t:'+1.3–1.4°C',h:'+18–30d',p:'-10 to +5%',s:'+55cm',w:'High',x:'High',wf:'High'}
     },
     rcp85:{
-      2030:{t:'+1.0°C',h:'+5d',p:'-4% drier',s:'+9cm',w:'Low',x:'Moderate',wf:'Low'},
-      2050:{t:'+2.2°C',h:'+20d',p:'-12% drier',s:'+23cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+      2040:{t:'+0.8–1.0°C',h:'+8–18d',p:'-6 to +3%',s:'+28cm',w:'High',x:'High',wf:'High'},
+      2090:{t:'+2.8–3.1°C',h:'+40–60d',p:'-18 to +8%',s:'+79cm',w:'Very High',x:'Very High',wf:'Very High'}
     },
-    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'hi',x:'hi'},
     sea:{
-      Summer:'Increased drought frequency in Central Otago. Irrigation demand grows.',
-      Autumn:'Fire risk in tussock grasslands elevated. Changed autumn conditions for viticulture.',
-      Winter:'Reduced snowfall at ski areas. Tourism disruption.',
-      Spring:'Earlier spring. Extended growing season — opportunity and challenge.'
+      Summer:'Canterbury Plains drought intensifying. Christchurch urban heat increasing. Southern Alps glacier retreat reducing river flows.',
+      Autumn:'Erratic rainfall patterns. Canterbury nor'wester events intensifying. Flooding in alpine tributary rivers.',
+      Winter:'Reduced South Island snowpack. Hydro-electricity generation affected. Alpine ski industry viability declining.',
+      Spring:'Earlier snowmelt reducing summer water availability. Canterbury irrigation expansion required but water more scarce.'
     },
-    water:'Clutha River flows and Lake Dunstan storage under increasing variability. Southland dairy dependent on reliable rainfall.',
-    agri:'Central Otago viticulture: warming extends growing season but summer drought stress increases. Southland dairy under rainfall reliability pressure.',
-    risks:['Ski industry viability','Central Otago drought','Tussock fire risk','Glacier retreat pace']
+    water:'Alpine glacier loss is the defining long-term water issue. Canterbury irrigation (one of NZ's largest) increasingly stressed in summer. Groundwater overuse.',
+    agri:'Canterbury grain, vegetable and dairy production under irrigation water pressure. Viticulture (Central Otago border) expanding with warming.',
+    risks:['Alpine glacier loss','Canterbury drought','Hydro-electricity risk','Irrigation water scarcity','Christchurch coastal flooding']
   },
-  'West Coast NZ': {
-    bb:[-44,-41,168,172],
-    rcp26:{
-      2030:{t:'+0.8°C',h:'+2d',p:'+5% wetter',s:'+7cm',w:'Low',x:'Low',wf:'Low'},
-      2050:{t:'+1.1°C',h:'+4d',p:'+7% wetter',s:'+12cm',w:'Low',x:'Low–Moderate',wf:'Low'}
+  'Western & Southern South Island': {
+    bb:[-47,-43,166,173],
+    rcp45:{
+      2040:{t:'+0.7–0.9°C',h:'+3–10d',p:'+10–20% wetter (west)',s:'+24cm',w:'Low',x:'Moderate',wf:'Low'},
+      2090:{t:'+1.3–1.4°C',h:'+10–20d',p:'+15–25% wetter (west)',s:'+55cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
     },
     rcp85:{
-      2030:{t:'+1.0°C',h:'+3d',p:'+6% wetter',s:'+9cm',w:'Low',x:'Low–Moderate',wf:'Low'},
-      2050:{t:'+2.0°C',h:'+14d',p:'+12% wetter',s:'+23cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+      2040:{t:'+0.8–1.0°C',h:'+5–12d',p:'+12–22% wetter (west)',s:'+28cm',w:'Low',x:'Moderate',wf:'Low'},
+      2090:{t:'+2.8–3.1°C',h:'+30–45d',p:'+20–35% wetter (west)',s:'+79cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
     },
-    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    conf:{t:'hi',h:'hi',p:'hi (west)',s:'hi',w:'med',x:'med'},
     sea:{
-      Summer:'Rainfall events more intense. Franz Josef and Fox glaciers retreat accelerates.',
-      Autumn:'Landslide and flooding risk from intense rain events.',
-      Winter:'Milder but wetter. Glacier retreat continues through warmer winters.',
-      Spring:'Earlier spring melt from reduced snowpack.'
+      Summer:'West Coast already very wet — further increases in rainfall. Fiordland rainfall intensifying. Southland cold snaps moderating.',
+      Autumn:'West Coast flood frequency increasing. Southern Ocean storminess changing. Fiordland and Milford Sound access disrupted more frequently.',
+      Winter:'Reduced snowfall in Southland. West Coast rivers in higher flood mode. Central Otago winters warming significantly.',
+      Spring:'Earlier snowmelt. West Coast track and road damage from flooding. Southern ecosystem phenology shifts.'
     },
-    water:'Abundant rainfall but increasing flash-flood risk. Infrastructure vulnerability elevated.',
-    agri:'Dairying on coastal flats faces flooding frequency increase.',
-    risks:['Glacier loss (tourism impact)','Landslide risk','Coastal flooding','Infrastructure isolation']
-  },
-  'Hawke\'s Bay / Gisborne': {
-    bb:[-40,-37,176,179],
-    rcp26:{
-      2030:{t:'+0.9°C',h:'+6d',p:'-5% drier',s:'+8cm',w:'Moderate',x:'Moderate',wf:'Low'},
-      2050:{t:'+1.2°C',h:'+10d',p:'-8% drier',s:'+13cm',w:'Moderate',x:'High',wf:'Low'}
-    },
-    rcp85:{
-      2030:{t:'+1.1°C',h:'+9d',p:'-7% drier',s:'+10cm',w:'Moderate',x:'High',wf:'Low–Moderate'},
-      2050:{t:'+2.3°C',h:'+26d',p:'-18% drier',s:'+26cm',w:'High',x:'Very High',wf:'Moderate'}
-    },
-    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'med'},
-    sea:{
-      Summer:'Increasing drought and extreme heat. Cyclone Gabrielle (2023) type events more frequent.',
-      Autumn:'Extended dry. River low-flows. Orchard irrigation critical.',
-      Winter:'Milder and drier. Some chilling loss for deciduous orchards.',
-      Spring:'Early warm spell risk. Crop flowering disruption.'
-    },
-    water:'Heretaunga Plains aquifer under increasing pressure. River flows declining in summer.',
-    agri:'Apple, pear, and wine grape production exposed to drought and heat stress. Cyclone Gabrielle demonstrated catastrophic flood-damage potential.',
-    risks:['Cyclone-scale flooding (like 2023)','Summer drought','Orchard viability','River system depletion']
+    water:'West Coast rivers already very high flow — further increasing. Southland water security relatively stable. Southern lakes warming.',
+    agri:'Southland pastoral farming relatively resilient but winters warming changes animal management. West Coast farming constrained by topography and increased rainfall.',
+    risks:['West Coast flooding','Fiordland access disruption','Southern Ocean storminess','Southland soil waterlogging','Alpine landslides']
   }
 };
 
@@ -871,8 +807,16 @@ const TRDATA = {
 
 // ── Region detection ──────────────────────────────────
 function detectRegion(lat, lng) {
-  // AUS check
-  for(const [name, r] of Object.entries(AUS)) {
+  // Priority order for AUS: coastal/specific regions before broader inland ones
+  const AUS_PRIORITY = [
+    'Wet Tropics','East Coast','Central Slopes',
+    'Southern & South-Western Flatlands',
+    'Southern Slopes',  // before Murray Basin (coastal Vic/Tas)
+    'Murray Basin','Monsoonal North','Rangelands'
+  ];
+  for(const name of AUS_PRIORITY) {
+    const r = AUS[name];
+    if(!r) continue;
     const [minLat,maxLat,minLng,maxLng] = r.bb;
     if(lat>=minLat && lat<=maxLat && lng>=minLng && lng<=maxLng) return {type:'aus',name,data:r};
   }
@@ -924,7 +868,9 @@ function renderDetail(region) {
   const d = region.data;
   const sc = activeScen;
   const yr = parseInt(activeYr);
-  const dat = d[sc][yr];
+  // NZ uses 2040/2090 timepoints; use mapYr to translate
+  const mappedYr = mapYr(region.type === 'nz' ? 'NZ' : 'AUS', activeYr);
+  const dat = d[sc][mappedYr];
   const conf = d.conf;
 
   const confBadge = (k) => {
@@ -964,17 +910,23 @@ function renderDetail(region) {
         <div class="tab-label">RCP 2.6</div>
         <div class="tab-sub">Rapid decarbonisation ~1.5–2°C</div>
       </div>
+      <div class="tab rcp45 ${sc==='rcp45'?'active':''}" onclick="switchScen('rcp45')">
+        <div class="tab-label">RCP 4.5</div>
+        <div class="tab-sub">Moderate mitigation ~2.5°C</div>
+      </div>
       <div class="tab rcp85 ${sc==='rcp85'?'active':''}" onclick="switchScen('rcp85')">
         <div class="tab-label">RCP 8.5</div>
-        <div class="tab-sub">Business as usual 4°C+</div>
+        <div class="tab-sub">High emissions 4°C+</div>
       </div>
     </div>
     <div class="yr-tabs">
       <div class="tab yr ${activeYr==='2030'?'active':''}" onclick="switchYr('2030')">2030</div>
       <div class="tab yr ${activeYr==='2050'?'active':''}" onclick="switchYr('2050')">2050</div>
+      <div class="tab yr ${activeYr==='2090'?'active':''}" onclick="switchYr('2090')">2090</div>
     </div>
+    ${region.type==='nz' ? '<div style="font-size:11px;color:var(--muted);padding:2px 20px 4px">NZ data: 2030→2040, 2050→2040, 2090→2090 (NIWA timepoints)</div>' : region.type==='aus' ? '<div style="font-size:11px;color:var(--muted);padding:2px 20px 4px">AUS data: 2030, 2050→2030, 2090 (CSIRO timepoints)</div>' : ''}
 
-    <div class="sec-label">Climate Metrics · ${activeYr}</div>
+    <div class="sec-label">Climate Metrics · ${region.type==='nz' ? mappedYr : activeYr}</div>
     <div class="metric-list">
       <div class="metric-item">
         <div class="metric-name">🌡 Temperature Change ${confBadge('t')}</div>
@@ -1064,7 +1016,12 @@ function renderGlobal(lat, lng, label) {
   const gd = GLOBAL[gname] || GLOBAL['Pacific Islands'];
   const sc = activeScen;
   const yr = parseInt(activeYr);
-  const dat = gd[yr][sc];
+  // GLOBAL data has rcp26/rcp85; for rcp45 use rcp85 as conservative proxy
+  // For 2090 timepoint, fall back to 2050 if GLOBAL doesn't have 2090
+  const effectiveYr = (gd[yr] || gd[2050]) ? yr : 2050;
+  const effectiveSc = sc === 'rcp45' ? 'rcp85' : sc;
+  const datRow = gd[effectiveYr] || gd[2050];
+  const dat = datRow ? datRow[effectiveSc] || datRow['rcp85'] : {};
 
   const riskLevel = (val) => {
     const v = (val||'').toLowerCase();
@@ -1087,14 +1044,19 @@ function renderGlobal(lat, lng, label) {
         <div class="tab-label">RCP 2.6</div>
         <div class="tab-sub">Rapid decarbonisation</div>
       </div>
+      <div class="tab rcp45 ${sc==='rcp45'?'active':''}" onclick="switchScen('rcp45')">
+        <div class="tab-label">RCP 4.5</div>
+        <div class="tab-sub">Moderate mitigation</div>
+      </div>
       <div class="tab rcp85 ${sc==='rcp85'?'active':''}" onclick="switchScen('rcp85')">
         <div class="tab-label">RCP 8.5</div>
-        <div class="tab-sub">Business as usual</div>
+        <div class="tab-sub">High emissions</div>
       </div>
     </div>
     <div class="yr-tabs">
       <div class="tab yr ${activeYr==='2030'?'active':''}" onclick="switchYr('2030')">2030</div>
       <div class="tab yr ${activeYr==='2050'?'active':''}" onclick="switchYr('2050')">2050</div>
+      <div class="tab yr ${activeYr==='2090'?'active':''}" onclick="switchYr('2090')">2090</div>
     </div>
 
     <div class="sec-label">Climate Metrics · ${activeYr}</div>
