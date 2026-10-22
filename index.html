@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>Climate Impact Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" crossorigin="anonymous"/>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js" crossorigin="anonymous"></script>
+<style>
+/* ── OENVC design tokens ────────────────────────────── */
+:root {
+  --bg:#F3F5F6; --panel:#FFFFFF; --ink:#16202A; --muted:#5B6873;
+  --line:#D7DDE2; --soft:#E9EDF0; --accent:#1F5F8B;
+  --ok:#2E7D4F; --warn:#B86E00; --bad:#B42318;
+  --f-display:'Barlow Condensed',sans-serif;
+  --f-body:'Barlow',sans-serif;
+  --f-mono:'IBM Plex Mono',monospace;
+  --rail:400px;
+}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F151B; --panel:#161E26; --ink:#E4EAEF; --muted:#94A3AF;
+    --line:#2A3641; --soft:#1E2A35;
+    --accent:#6FB0DE; --ok:#5FC28A; --warn:#E5A23A; --bad:#F2776B;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F151B; --panel:#161E26; --ink:#E4EAEF; --muted:#94A3AF;
+  --line:#2A3641; --soft:#1E2A35;
+  --accent:#6FB0DE; --ok:#5FC28A; --warn:#E5A23A; --bad:#F2776B;
+}
+
+/* ── Reset ──────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--f-body);font-size:14px;color:var(--ink);background:var(--bg)}
+
+/* ── App shell ──────────────────────────────────────── */
+.app{display:grid;grid-template-columns:var(--rail) 1fr;height:100vh}
+
+/* ── Rail ───────────────────────────────────────────── */
+.rail{
+  background:var(--panel);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.rail-head{
+  padding:20px 20px 16px;
+  border-bottom:1px solid var(--line);
+  flex-shrink:0;
+}
+.rail-head h1{
+  font-family:var(--f-display);
+  font-size:1.25rem;font-weight:700;
+  letter-spacing:.01em;
+  color:var(--ink);
+  line-height:1.2;
+}
+.rail-head p{
+  font-size:.8rem;color:var(--muted);margin-top:3px;line-height:1.4;
+}
+
+/* ── Search ─────────────────────────────────────────── */
+.search-wrap{padding:14px 20px;border-bottom:1px solid var(--line);flex-shrink:0}
+.search-row{display:flex;gap:8px}
+.search-row input{
+  flex:1;padding:7px 10px;
+  background:var(--soft);border:1px solid var(--line);
+  border-radius:6px;color:var(--ink);
+  font-family:var(--f-body);font-size:.875rem;
+  outline:none;transition:border .15s;
+}
+.search-row input::placeholder{color:var(--muted)}
+.search-row input:focus{border-color:var(--accent)}
+.search-row button{
+  padding:7px 14px;background:var(--accent);color:#fff;
+  border:none;border-radius:6px;font-family:var(--f-body);
+  font-size:.875rem;font-weight:600;cursor:pointer;
+  transition:opacity .15s;white-space:nowrap;
+}
+.search-row button:hover{opacity:.85}
+
+/* ── Scroll body ─────────────────────────────────────── */
+.rail-body{
+  overflow-y:auto;flex:1;
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+}
+.rail-body::-webkit-scrollbar{width:4px}
+.rail-body::-webkit-scrollbar-track{background:transparent}
+.rail-body::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
+
+/* ── Prompt state ────────────────────────────────────── */
+.prompt{
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:10px;padding:40px 24px;
+  color:var(--muted);text-align:center;
+}
+.prompt svg{opacity:.35}
+.prompt p{font-size:.85rem;line-height:1.5}
+
+/* ── Section label ───────────────────────────────────── */
+.sec-label{
+  font-family:var(--f-display);
+  font-size:.7rem;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);
+  padding:16px 20px 6px;
+}
+
+/* ── Location header ─────────────────────────────────── */
+.loc-head{
+  padding:14px 20px;
+  border-bottom:1px solid var(--line);
+}
+.loc-coords{
+  font-family:var(--f-mono);font-size:.75rem;color:var(--muted);
+}
+.loc-name{
+  font-family:var(--f-display);font-size:1.1rem;font-weight:700;
+  color:var(--ink);margin-top:2px;
+}
+.loc-sub{font-size:.8rem;color:var(--muted);margin-top:2px}
+
+/* ── Tab strip ───────────────────────────────────────── */
+.tab-strip{
+  display:flex;gap:6px;
+  padding:14px 20px 0;
+}
+.tab{
+  flex:1;padding:8px 6px;
+  border:1px solid var(--line);border-radius:6px;
+  background:var(--soft);cursor:pointer;
+  font-family:var(--f-body);font-size:.8rem;font-weight:600;
+  color:var(--muted);text-align:center;
+  transition:all .15s;
+}
+.tab.rcp26.active{background:var(--ok);border-color:var(--ok);color:#fff}
+.tab.rcp85.active{background:var(--bad);border-color:var(--bad);color:#fff}
+.tab.yr.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.tab:hover:not(.active){border-color:var(--accent);color:var(--accent)}
+
+.tab-label{font-size:.65rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:1px}
+.tab-sub{font-size:.7rem;font-weight:400;opacity:.85}
+
+.yr-tabs{display:flex;gap:6px;padding:6px 20px 0}
+.yr-tabs .tab{font-size:.85rem}
+
+/* ── Metric list ─────────────────────────────────────── */
+.metric-list{padding:12px 20px;display:flex;flex-direction:column;gap:10px}
+.metric-item{}
+.metric-name{font-size:.75rem;color:var(--muted);margin-bottom:3px;display:flex;align-items:center;gap:5px}
+.metric-val{font-family:var(--f-mono);font-size:.95rem;font-weight:600;color:var(--ink)}
+.metric-bar-wrap{height:3px;background:var(--soft);border-radius:2px;margin-top:4px}
+.metric-bar{height:3px;border-radius:2px;transition:width .4s}
+
+/* ── Confidence badge ────────────────────────────────── */
+.conf-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 7px;border-radius:3px;
+  font-family:var(--f-mono);font-size:.65rem;font-weight:600;
+  letter-spacing:.04em;text-transform:uppercase;
+}
+.conf-badge.hi{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.conf-badge.med{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
+.conf-badge.lo{background:var(--soft);color:var(--muted)}
+
+/* ── Risk tag ────────────────────────────────────────── */
+.risk-tag{
+  display:inline-flex;align-items:center;
+  padding:1px 6px;border-radius:3px;
+  font-family:var(--f-mono);font-size:.65rem;font-weight:600;
+  text-transform:uppercase;letter-spacing:.04em;
+}
+.risk-tag.hi{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+.risk-tag.md{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
+.risk-tag.lo{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+
+/* ── Card ────────────────────────────────────────────── */
+.card{
+  margin:0 20px;
+  border:1px solid var(--line);border-radius:8px;
+  overflow:hidden;
+}
+.card + .card{margin-top:10px}
+
+.card-head{
+  background:var(--soft);
+  padding:10px 14px;
+  font-family:var(--f-display);font-size:.85rem;font-weight:700;
+  color:var(--ink);
+  display:flex;align-items:center;gap:6px;
+}
+.card-body{padding:12px 14px}
+.card-body p{font-size:.8rem;color:var(--muted);line-height:1.5}
+
+/* ── Seasonal 2×2 grid ───────────────────────────────── */
+.season-grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:1px;background:var(--line);
+}
+.season-cell{background:var(--panel);padding:10px 12px}
+.season-cell .slabel{
+  font-family:var(--f-display);font-size:.7rem;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  margin-bottom:4px;
+}
+.season-cell p{font-size:.75rem;color:var(--muted);line-height:1.4}
+
+/* ── Outlook grid 2×2 ────────────────────────────────── */
+.outlook-grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:1px;background:var(--line);
+}
+.outlook-cell{background:var(--panel);padding:10px 12px}
+.outlook-cell .yr{
+  font-family:var(--f-mono);font-size:.7rem;font-weight:600;color:var(--muted);
+  margin-bottom:3px;
+}
+.outlook-cell p{font-size:.75rem;color:var(--ink);line-height:1.4}
+
+/* ── TR section ──────────────────────────────────────── */
+.tr-wrap{padding:0 20px 20px}
+.tr-select{
+  width:100%;padding:8px 10px;
+  background:var(--soft);border:1px solid var(--line);
+  border-radius:6px;color:var(--ink);
+  font-family:var(--f-body);font-size:.875rem;
+  outline:none;cursor:pointer;
+}
+.tr-select:focus{border-color:var(--accent)}
+
+.urgency-bar{
+  margin-top:12px;
+  height:6px;border-radius:3px;
+  background:linear-gradient(90deg,var(--ok),var(--warn),var(--bad));
+  position:relative;
+}
+.urgency-pin{
+  position:absolute;top:-4px;
+  width:14px;height:14px;
+  background:var(--panel);border:2px solid var(--ink);
+  border-radius:50%;transform:translateX(-50%);
+  transition:left .4s;
+}
+.urgency-label{
+  display:flex;justify-content:space-between;
+  font-size:.65rem;color:var(--muted);margin-top:4px;
+}
+
+.tr-cards{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:8px;margin-top:12px;
+}
+.tr-card{
+  border:1px solid var(--line);border-radius:6px;
+  padding:10px 12px;background:var(--panel);
+}
+.tr-card-icon{font-size:1rem;margin-bottom:4px}
+.tr-card-title{
+  font-family:var(--f-display);font-size:.8rem;font-weight:700;
+  color:var(--ink);margin-bottom:4px;
+}
+.tr-card-body{font-size:.72rem;color:var(--muted);line-height:1.4}
+
+.opp-panel{
+  margin-top:10px;
+  border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);
+  border-radius:6px;
+  background:color-mix(in srgb,var(--ok) 8%,transparent);
+  padding:12px 14px;
+}
+.opp-panel .opp-label{
+  font-family:var(--f-display);font-size:.7rem;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ok);
+  margin-bottom:6px;
+}
+.opp-panel p{font-size:.78rem;color:var(--ink);line-height:1.45}
+
+/* ── Disclaimer ──────────────────────────────────────── */
+.disclaimer{
+  padding:12px 20px 20px;
+  font-size:.7rem;color:var(--muted);line-height:1.5;
+}
+
+/* ── Map ─────────────────────────────────────────────── */
+.map-wrap{position:relative;overflow:hidden;background:var(--soft)}
+#map{position:absolute;top:0;left:0;width:100%;height:100%}
+
+.map-hint{
+  position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:20px;padding:6px 14px;
+  font-size:.75rem;color:var(--muted);
+  pointer-events:none;white-space:nowrap;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);
+}
+
+.theme-btn{
+  position:absolute;top:12px;right:12px;z-index:10;
+  width:32px;height:32px;
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:6px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--muted);font-size:.85rem;
+  box-shadow:0 1px 4px rgba(0,0,0,.1);
+  transition:color .15s;
+}
+.theme-btn:hover{color:var(--ink)}
+
+/* ── Mobile ──────────────────────────────────────────── */
+@media(max-width:768px){
+  .app{grid-template-columns:1fr;grid-template-rows:45vh 1fr;height:100dvh}
+  .map-wrap{order:1}
+  .rail{order:2;border-right:none;border-top:1px solid var(--line)}
+  .rail-head{padding:12px 16px 10px}
+  .rail-head h1{font-size:1.05rem}
+  .search-wrap{padding:10px 16px}
+  .sec-label,.metric-list,.card,.tr-wrap,.disclaimer{
+    padding-left:16px;padding-right:16px;
+  }
+  .card{margin:0 16px}
+  .tab-strip{padding:10px 16px 0}
+  .yr-tabs{padding:6px 16px 0}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Rail ─────────────────────────────────────── -->
+  <div class="rail">
+
+    <div class="rail-head">
+      <h1>Climate Impact Explorer</h1>
+      <p>Projected physical climate impacts at any location — 2030 &amp; 2050 under two emission scenarios</p>
+    </div>
+
+    <div class="search-wrap">
+      <div class="search-row">
+        <input id="search-input" type="text" placeholder="Search an address or place…" autocomplete="off">
+        <button id="search-btn">Search</button>
+      </div>
+    </div>
+
+    <div class="rail-body" id="rail-body">
+      <div class="prompt" id="prompt-state">
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <circle cx="20" cy="20" r="18" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M20 10 Q24 15 20 20 Q16 25 20 30" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M10 20 Q15 16 20 20 Q25 24 30 20" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>
+        <p>Click anywhere on the map<br>or search a location to see<br>climate projections</p>
+      </div>
+      <div id="detail-state" style="display:none"></div>
+    </div>
+
+  </div>
+
+  <!-- ── Map ──────────────────────────────────────── -->
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="map-hint">🔴 Click anywhere on the map to select a location</div>
+    <button class="theme-btn" id="theme-btn" title="Toggle theme">☀</button>
+  </div>
+
+</div>
+
+<script>
+// ── Token ─────────────────────────────────────────────
+mapboxgl.accessToken = 'pk.eyJ1IjoidGhhbWciLCJhIjoiY21vbWZoZ2E3MG51czJ3b2w0ZjE0emk2biJ9.C4sol22BV5J3FD4MNSBbNg';
+
+// ── Theme ─────────────────────────────────────────────
+let darkMode = window.matchMedia('(prefers-color-scheme:dark)').matches;
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+  document.getElementById('theme-btn').textContent = darkMode ? '☀' : '🌙';
+  if(map) map.setStyle(darkMode ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/light-v11');
+}
+document.getElementById('theme-btn').addEventListener('click', () => { darkMode = !darkMode; applyTheme(); });
+applyTheme();
+
+// ── Map init ──────────────────────────────────────────
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: darkMode ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/light-v11',
+  center: [134, -25],
+  zoom: 3.5,
+  projection: 'globe'
+});
+
+map.on('load', () => {
+  map.setFog({color:'rgb(220,230,240)',range:[1,8],'horizon-blend':.04});
+  map.resize();
+});
+
+// Retry resize to ensure map fills container after fonts/layout settle
+[100, 300, 600, 1200].forEach(ms => setTimeout(() => map.resize(), ms));
+window.addEventListener('resize', () => map.resize());
+
+// Blue dot marker
+const el = document.createElement('div');
+el.style.cssText = 'width:14px;height:14px;background:#1F5F8B;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 3px rgba(31,95,139,.3)';
+const marker = new mapboxgl.Marker(el).setLngLat([134,-25]).addTo(map);
+marker.getElement().style.display='none';
+
+map.on('click', e => select(e.lngLat.lat, e.lngLat.lng, null));
+
+// ── State ─────────────────────────────────────────────
+let activeScen = 'rcp85', activeYr = '2050', curRegion = null, curGlobal = null;
+
+// ── AUS data ──────────────────────────────────────────
+const AUS = {
+  'Northern Australia': {
+    bb:[-20,0,129,160],
+    rcp26:{
+      2030:{t:'+1.2°C',h:'+5d',p:'-5% drier',s:'+8cm',w:'Low–Moderate',x:'Moderate',wf:'Low'},
+      2050:{t:'+1.5°C',h:'+8d',p:'-7% drier',s:'+13cm',w:'Moderate',x:'Moderate',wf:'Low–Moderate'}
+    },
+    rcp85:{
+      2030:{t:'+1.4°C',h:'+8d',p:'-6% drier',s:'+10cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
+      2050:{t:'+2.5°C',h:'+20d',p:'-12% drier',s:'+25cm',w:'High',x:'High',wf:'Moderate–High'}
+    },
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'med'},
+    sea:{
+      Summer:'Intensified monsoon variability. Cyclone activity shifts poleward. Flash flooding risk increases in coastal lowlands.',
+      Autumn:'Extended dry season onset. Bushfire risk elevated in savanna zones. Reduced stream flows in major catchments.',
+      Winter:'Negligible rainfall. Water storage stress. Agricultural productivity constrained by heat accumulation.',
+      Spring:'Early season heat extremes. Increased evaporation. Storm season beginning earlier.'
+    },
+    water:'Declining dry-season flows in northern rivers. Increased flood–drought cycling. Saltwater intrusion risk in coastal aquifers.',
+    agri:'Sugarcane and horticulture face heat and water stress. Tropical fruit viability constrained under RCP 8.5. Cattle productivity declines with increased heat load.',
+    risks:['Heat stress on livestock','Cyclone intensification','Coastal inundation','Aquifer salinisation']
+  },
+  'Queensland': {
+    bb:[-30,-10,138,154],
+    rcp26:{
+      2030:{t:'+1.1°C',h:'+6d',p:'-4% drier',s:'+8cm',w:'Low–Moderate',x:'Moderate',wf:'Low–Moderate'},
+      2050:{t:'+1.4°C',h:'+9d',p:'-6% drier',s:'+13cm',w:'Moderate',x:'Moderate',wf:'Moderate'}
+    },
+    rcp85:{
+      2030:{t:'+1.3°C',h:'+9d',p:'-5% drier',s:'+10cm',w:'Moderate',x:'High',wf:'Moderate'},
+      2050:{t:'+2.8°C',h:'+28d',p:'-14% drier',s:'+27cm',w:'High',x:'Very High',wf:'High'}
+    },
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'hi'},
+    sea:{
+      Summer:'Extreme rainfall events intensify. Flood risk in Brisbane and coastal plains. Coral bleaching on Great Barrier Reef escalates.',
+      Autumn:'Prolonged dry spells. Bushfire risk in southeast Queensland elevated from October.',
+      Winter:'Mild and dry. Water storage declining. Agricultural districts experience irrigation stress.',
+      Spring:'Early fire season. Heat records broken more frequently. Heatwaves extend into October.'
+    },
+    water:'Southern Queensland faces critical water security risk. Condamine–Balonne system stressed. SEQ Water Grid under sustained pressure by 2050.',
+    agri:'Sugarcane, macadamia, and subtropical horticulture highly exposed. Cotton industry faces increasing water allocation competition.',
+    risks:['Reef ecosystem collapse','Extreme rainfall flooding','Prolonged drought','Urban heat island effect']
+  },
+  'New South Wales': {
+    bb:[-38,-27,140,154],
+    rcp26:{
+      2030:{t:'+1.1°C',h:'+8d',p:'-5% drier',s:'+8cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
+      2050:{t:'+1.5°C',h:'+12d',p:'-8% drier',s:'+13cm',w:'Moderate',x:'High',wf:'Moderate'}
+    },
+    rcp85:{
+      2030:{t:'+1.3°C',h:'+11d',p:'-7% drier',s:'+10cm',w:'Moderate',x:'High',wf:'Moderate–High'},
+      2050:{t:'+3.0°C',h:'+35d',p:'-18% drier',s:'+28cm',w:'High',x:'Very High',wf:'Very High'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    sea:{
+      Summer:'Extreme heat events multiply. Sydney faces dangerous heatwave days. Bushfire conditions worsen dramatically.',
+      Autumn:'Prolonged drought periods. Murray–Darling system at risk. Dust storm frequency increases.',
+      Winter:'Snowpack decline in Snowy Mountains. Ski season shortens significantly by 2050.',
+      Spring:'Peak fire danger season extends. Record September–October temperatures projected.'
+    },
+    water:'Murray–Darling Basin water security critically threatened. Sydney Catchment under pressure. Groundwater depletion accelerates in western plains.',
+    agri:'Wheat, wine grapes, and mixed farming highly exposed. Hunter Valley viticulture at significant risk. Irrigation water availability declines markedly.',
+    risks:['Catastrophic bushfire conditions','Severe drought','Murray-Darling ecosystem collapse','Flash flooding in urban areas']
+  },
+  'Victoria': {
+    bb:[-39,-33,140,150],
+    rcp26:{
+      2030:{t:'+1.0°C',h:'+7d',p:'-6% drier',s:'+7cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
+      2050:{t:'+1.4°C',h:'+11d',p:'-10% drier',s:'+12cm',w:'Moderate',x:'High',wf:'High'}
+    },
+    rcp85:{
+      2030:{t:'+1.2°C',h:'+10d',p:'-8% drier',s:'+9cm',w:'Moderate',x:'High',wf:'High'},
+      2050:{t:'+2.8°C',h:'+32d',p:'-22% drier',s:'+25cm',w:'High',x:'Very High',wf:'Very High'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    sea:{
+      Summer:'Melbourne\'s 40°+ days double by 2050 under RCP 8.5. Bushfire risk in ranges reaches catastrophic levels.',
+      Autumn:'Prolonged dry period. Alpine ash dieback accelerates. Rainfall-runoff relationships shift significantly.',
+      Winter:'Reduced snowpack. Rainfall below historical averages. Hydropower capacity constrained.',
+      Spring:'Early heat events. Grassland fire danger elevated. Spring rainfall increasingly variable.'
+    },
+    water:'Thompson and Yarra catchments face declining inflows. Melbourne water security stressed. Alpine water towers weakening.',
+    agri:'Dairy industry under severe stress from heat and water shortages. Wine regions face quality and viability challenges. Broadacre cropping significantly disrupted.',
+    risks:['Catastrophic bushfire (as severe as 2019-20)','Water supply crisis','Alpine ecosystem loss','Agricultural system disruption']
+  },
+  'South Australia': {
+    bb:[-38,-25,128,141],
+    rcp26:{
+      2030:{t:'+1.1°C',h:'+9d',p:'-7% drier',s:'+8cm',w:'Moderate',x:'High',wf:'Moderate'},
+      2050:{t:'+1.6°C',h:'+14d',p:'-11% drier',s:'+13cm',w:'High',x:'High',wf:'High'}
+    },
+    rcp85:{
+      2030:{t:'+1.4°C',h:'+13d',p:'-9% drier',s:'+10cm',w:'High',x:'High',wf:'High'},
+      2050:{t:'+3.2°C',h:'+40d',p:'-25% drier',s:'+27cm',w:'Very High',x:'Very High',wf:'Very High'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    sea:{
+      Summer:'Extreme and prolonged heatwaves. Adelaide 45°+ days triple by 2050. Electricity grid stress at critical peak.',
+      Autumn:'Declining autumn break in rains. Agricultural planting windows narrow.',
+      Winter:'Reduced winter rainfall. Murray mouth flows at historic lows. Coorong ecosystem degradation.',
+      Spring:'Extended dry spring. Catastrophic fire risk across scrublands and mallee.'
+    },
+    water:'Murray River inflows decline. Adelaide\'s water security critically dependent on desalination. Rural water supply at existential risk under RCP 8.5.',
+    agri:'Barossa and Clare Valley wine regions face viability challenges. Grain belt productivity declines 20–40%. Sheep and beef cattle stations under heat and feed stress.',
+    risks:['Extreme prolonged heatwaves','Murray River system collapse','Desertification risk','Agricultural viability loss']
+  },
+  'Western Australia': {
+    bb:[-35,-13,112,130],
+    rcp26:{
+      2030:{t:'+1.1°C',h:'+7d',p:'-8% drier (SW)',s:'+8cm',w:'Moderate',x:'Moderate',wf:'Moderate'},
+      2050:{t:'+1.5°C',h:'+11d',p:'-14% drier (SW)',s:'+13cm',w:'High',x:'High',wf:'Moderate–High'}
+    },
+    rcp85:{
+      2030:{t:'+1.3°C',h:'+10d',p:'-10% drier (SW)',s:'+10cm',w:'High',x:'High',wf:'High'},
+      2050:{t:'+3.0°C',h:'+30d',p:'-25% drier (SW)',s:'+26cm',w:'Very High',x:'Very High',wf:'Very High'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    sea:{
+      Summer:'Extreme northwest heat. Increasing tropical cyclone intensity. Pilbara heatwaves become life-threatening.',
+      Autumn:'Southwest losing autumn rainfall signal. Perth winter rainfall beginning significantly later.',
+      Winter:'Southwest winter rainfall has declined 20% since 1970 — trend accelerates. Drying fastest of any world region.',
+      Spring:'Perth no longer reliably green in spring by 2050 under RCP 8.5. Bushfire risk rises in jarrah forests.'
+    },
+    water:'Perth faces acute water security challenge. Gnangara Mound aquifer declining. Desalination already supplies 50% of Perth water — this will need to increase.',
+    agri:'Wheatbelt facing abandonment risk in southern areas. Viticulture in Margaret River challenged. Pastoral stations stressed.',
+    risks:['Permanent drying of southwest WA','Perth water security crisis','Wheatbelt viability loss','Intensifying northwest cyclones']
+  },
+  'Tasmania': {
+    bb:[-44,-39,143,149],
+    rcp26:{
+      2030:{t:'+0.8°C',h:'+3d',p:'+2% wetter',s:'+7cm',w:'Low',x:'Low',wf:'Low'},
+      2050:{t:'+1.1°C',h:'+5d',p:'+3% wetter',s:'+12cm',w:'Low–Moderate',x:'Moderate',wf:'Low–Moderate'}
+    },
+    rcp85:{
+      2030:{t:'+1.0°C',h:'+4d',p:'+1% wetter',s:'+9cm',w:'Low',x:'Moderate',wf:'Low–Moderate'},
+      2050:{t:'+2.2°C',h:'+15d',p:'-5% drier (east)',s:'+24cm',w:'Moderate',x:'High',wf:'Moderate'}
+    },
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'med',x:'med'},
+    sea:{
+      Summer:'Warming brings increased mainland-style extreme heat days. Fire risk rises in dry eastern districts.',
+      Autumn:'Extended growing season. Wine production improving quality in short term.',
+      Winter:'Snowpack declining at altitude. Hydro Tasmania storage potentially constrained.',
+      Spring:'Early warming. Phenological mismatch risks for endemic species.'
+    },
+    water:'Currently water-secure. Hydro system may face reduced storage under extended drying in eastern catchments. Western rivers remain robust.',
+    agri:'Near-term agriculture opportunity as warming opens new crop suitability windows. Wine quality improving. Long-term risk from increased fire frequency.',
+    risks:['Endemic species extinction risk','Wildfire in dry east','Ocean acidification impacts on aquaculture','Sea level risk to coastal settlements']
+  },
+  'ACT': {
+    bb:[-36,-35,148,149],
+    rcp26:{
+      2030:{t:'+1.1°C',h:'+8d',p:'-5% drier',s:'+7cm',w:'Moderate',x:'Moderate',wf:'High'},
+      2050:{t:'+1.5°C',h:'+13d',p:'-9% drier',s:'+12cm',w:'Moderate',x:'High',wf:'High'}
+    },
+    rcp85:{
+      2030:{t:'+1.3°C',h:'+11d',p:'-7% drier',s:'+9cm',w:'Moderate',x:'High',wf:'High'},
+      2050:{t:'+2.9°C',h:'+36d',p:'-20% drier',s:'+25cm',w:'High',x:'Very High',wf:'Very High'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'med',w:'med',x:'hi'},
+    sea:{
+      Summer:'Extreme heat events in Canberra intensify. Fire-smoke events increase. Western bushfire flanks threaten suburbs.',
+      Autumn:'Extended dry period. Fire risk elevated through May.',
+      Winter:'Cooler winters persist but snowfall in Brindabellas declines.',
+      Spring:'Peak fire danger. October heat records broken. Urban greening under water stress.'
+    },
+    water:'ACT Reservoir inflows declining. Water efficiency critical. Murrumbidgee water sharing under stress.',
+    agri:'High-value cool-climate production stressed. Summer heat curtails certain vegetable crops.',
+    risks:['Suburban bushfire interface','Heat-related health emergencies','Declining water security','Smoke health events']
+  },
+  'Northern Territory': {
+    bb:[-26,-10,128,138],
+    rcp26:{
+      2030:{t:'+1.2°C',h:'+7d',p:'-4% drier',s:'+8cm',w:'Moderate',x:'Moderate',wf:'Low'},
+      2050:{t:'+1.6°C',h:'+11d',p:'-6% drier',s:'+13cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+    },
+    rcp85:{
+      2030:{t:'+1.5°C',h:'+12d',p:'-5% drier',s:'+10cm',w:'High',x:'High',wf:'Low–Moderate'},
+      2050:{t:'+2.8°C',h:'+35d',p:'-14% drier',s:'+26cm',w:'Very High',x:'Very High',wf:'Moderate'}
+    },
+    conf:{t:'hi',h:'hi',p:'med',s:'hi',w:'hi',x:'med'},
+    sea:{
+      Summer:'Wet season intensification. Flooding in Darwin hinterland and Katherine more frequent.',
+      Autumn:'Rapid transition to extreme dry. Fire season begins earlier across Top End.',
+      Winter:'Extremely dry. Temperature extremes in interior. Tourism window narrows.',
+      Spring:'Interior exceeds 45°C increasingly. Fire risk in spinifex grasslands extreme.'
+    },
+    water:'Darwin water supply secure short-term. Interior groundwater increasingly stressed. Tiwi Islands face freshwater lens salinisation.',
+    agri:'Pastoral industry (cattle) highly exposed to heat stress and water scarcity. Mango production faces phenological disruption.',
+    risks:['Wet season flooding','Interior lethal heat','Pastoral industry collapse','Coastal inundation (Darwin)']
+  },
+  'Southwest WA': {
+    bb:[-35,-28,114,122],
+    rcp26:{
+      2030:{t:'+1.0°C',h:'+8d',p:'-10% drier',s:'+8cm',w:'High',x:'High',wf:'Moderate'},
+      2050:{t:'+1.4°C',h:'+13d',p:'-16% drier',s:'+13cm',w:'High',x:'High',wf:'Moderate–High'}
+    },
+    rcp85:{
+      2030:{t:'+1.2°C',h:'+12d',p:'-12% drier',s:'+10cm',w:'Very High',x:'High',wf:'High'},
+      2050:{t:'+2.8°C',h:'+36d',p:'-30% drier',s:'+26cm',w:'Very High',x:'Very High',wf:'Very High'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    sea:{
+      Summer:'Prolonged extreme heat. Perth heatwaves of 40°+ now multi-week events. Wildfire risk in jarrah forest.',
+      Autumn:'Rainfall onset delayed by weeks to months. Agricultural stress acute.',
+      Winter:'Winter rainfall reduced 15–30%. Rivers flow for shorter periods. This is the defining climate signal of the region.',
+      Spring:'Late and reduced spring rains. Grassland fires. Wildflower season disrupted.'
+    },
+    water:'The world\'s fastest-drying temperate region. Perth metropolitan water supply critically stressed. Full desalination dependency scenario by 2050.',
+    agri:'Margaret River wine industry faces 1.5–2°C warming over optimal. Wheatbelt — the breadbasket of WA — faces 20–40% yield decline.',
+    risks:['Permanent drying','Water supply failure','Wine region viability','Jarrah forest dieback']
+  },
+  'Southeast Australia': {
+    bb:[-40,-30,144,151],
+    rcp26:{
+      2030:{t:'+1.1°C',h:'+8d',p:'-6% drier',s:'+8cm',w:'Moderate',x:'High',wf:'High'},
+      2050:{t:'+1.5°C',h:'+13d',p:'-10% drier',s:'+13cm',w:'High',x:'High',wf:'High'}
+    },
+    rcp85:{
+      2030:{t:'+1.3°C',h:'+11d',p:'-8% drier',s:'+10cm',w:'High',x:'High',wf:'Very High'},
+      2050:{t:'+3.0°C',h:'+38d',p:'-22% drier',s:'+28cm',w:'Very High',x:'Very High',wf:'Very High'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'hi'},
+    sea:{
+      Summer:'The Black Summer scenario (2019-20) becomes the new baseline rather than a once-in-a-century event.',
+      Autumn:'Prolonged dry. Catchment replenishment fails. Alpine areas stressed.',
+      Winter:'Reduced winter snow. Snowy Hydro yield constrained. Reduced water availability downstream.',
+      Spring:'Peak fire danger extends. October–November fire conditions match historical January peaks.'
+    },
+    water:'Murray–Darling Basin water security at existential risk. Alpine snowmelt water tower weakening rapidly.',
+    agri:'Most agriculturally exposed region in Australia. Broadacre cropping, dairy, stone fruits all significantly stressed.',
+    risks:['Megafire frequency','Murray-Darling collapse','Alpine ecosystem loss','Irrigation system failure']
+  }
+};
+
+// ── NZ data ───────────────────────────────────────────
+const NZ = {
+  'Northland / Auckland': {
+    bb:[-38,-34,173,176],
+    rcp26:{
+      2030:{t:'+0.9°C',h:'+5d',p:'+3% wetter',s:'+8cm',w:'Low',x:'Low–Moderate',wf:'Low'},
+      2050:{t:'+1.2°C',h:'+8d',p:'+4% wetter',s:'+13cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+    },
+    rcp85:{
+      2030:{t:'+1.1°C',h:'+7d',p:'+4% wetter',s:'+10cm',w:'Low–Moderate',x:'Moderate',wf:'Low'},
+      2050:{t:'+2.2°C',h:'+22d',p:'+8% wetter',s:'+26cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+    },
+    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    sea:{
+      Summer:'Increased extreme rainfall events. Auckland flooding risk elevated. More intense cyclone remnants.',
+      Autumn:'Cyclone-driven rain. Long dry spells between events.',
+      Winter:'Milder winters. Frost-free days increase. Some agricultural benefit short-term.',
+      Spring:'Earlier spring warmth. Phenological advance. Subtropical species range expanding southward.'
+    },
+    water:'Auckland water supply relatively secure but demand growth + variability challenge Watercare infrastructure.',
+    agri:'Subtropical crop expansion opportunity. Kiwifruit, avocado range expanding. Soil moisture stress during dry spells.',
+    risks:['Coastal flooding (Tāmaki lowlands)','Cyclone intensification','Urban flooding','Marine heatwaves']
+  },
+  'Waikato / Bay of Plenty': {
+    bb:[-39,-36,174,178],
+    rcp26:{
+      2030:{t:'+0.9°C',h:'+4d',p:'+2% wetter',s:'+8cm',w:'Low',x:'Moderate',wf:'Low'},
+      2050:{t:'+1.2°C',h:'+7d',p:'+3% wetter',s:'+13cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+    },
+    rcp85:{
+      2030:{t:'+1.1°C',h:'+6d',p:'+3% wetter',s:'+10cm',w:'Low–Moderate',x:'Moderate',wf:'Low'},
+      2050:{t:'+2.1°C',h:'+20d',p:'+6% wetter',s:'+25cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+    },
+    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    sea:{
+      Summer:'More intense rainfall events. Bay of Plenty coast flooding. Marine heatwaves affect aquaculture.',
+      Autumn:'Cyclone season extends. Dairy farms face winter feed challenges.',
+      Winter:'Milder. Some regions lose reliable winter chilling for deciduous fruit.',
+      Spring:'Earlier spring growth. Dairy system calendar disruption.'
+    },
+    water:'Waikato River under allocation pressure. Lake Taupo nitrogen management intersects with climate variability.',
+    agri:'NZ\'s dairy heartland highly exposed to rainfall variability. Kiwifruit and avocado production faces new pest and disease pressures.',
+    risks:['Dairy industry disruption','Aquaculture losses','Cyclone-driven flooding','Coastal erosion']
+  },
+  'Wellington / Manawatū': {
+    bb:[-41,-38,174,177],
+    rcp26:{
+      2030:{t:'+0.8°C',h:'+3d',p:'-2% drier (east)',s:'+8cm',w:'Low',x:'Moderate',wf:'Low'},
+      2050:{t:'+1.1°C',h:'+5d',p:'-3% drier (east)',s:'+13cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+    },
+    rcp85:{
+      2030:{t:'+1.0°C',h:'+4d',p:'-3% drier (east)',s:'+10cm',w:'Low',x:'Moderate',wf:'Low'},
+      2050:{t:'+2.0°C',h:'+16d',p:'-8% drier (east)',s:'+26cm',w:'Moderate',x:'High',wf:'Low'}
+    },
+    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    sea:{
+      Summer:'Increased extreme wind events. Cook Strait conditions more variable. Drought risk in Wairarapa.',
+      Autumn:'Increased storminess. Wellington infrastructure exposed to wind and rain events.',
+      Winter:'Reduced snowfall on Tararua ranges.',
+      Spring:'Faster spring warming. Increased biological productivity.'
+    },
+    water:'Generally adequate but eastern Wairarapa faces increasing drought stress.',
+    agri:'Sheep and beef farming faces summer drought stress in Wairarapa and Hawke\'s Bay extension.',
+    risks:['Earthquake + flood compound risk','Wellington infrastructure exposure','Coastal erosion','Increased wind extremes']
+  },
+  'Canterbury / Marlborough': {
+    bb:[-44,-41,170,174],
+    rcp26:{
+      2030:{t:'+0.9°C',h:'+6d',p:'-5% drier',s:'+7cm',w:'Moderate',x:'Moderate',wf:'Low'},
+      2050:{t:'+1.2°C',h:'+10d',p:'-8% drier',s:'+12cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+    },
+    rcp85:{
+      2030:{t:'+1.1°C',h:'+9d',p:'-7% drier',s:'+9cm',w:'Moderate',x:'High',wf:'Low–Moderate'},
+      2050:{t:'+2.4°C',h:'+28d',p:'-18% drier',s:'+24cm',w:'High',x:'Very High',wf:'Moderate'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'med'},
+    sea:{
+      Summer:'Alpine snowmelt accelerated. Canterbury Plains irrigation under pressure. Nor\'wester events more intense.',
+      Autumn:'Harvest conditions changing. Marlborough wine harvest earlier.',
+      Winter:'Reduced snowpack in Southern Alps. Spring water supply reducing.',
+      Spring:'Earlier melt. Soil moisture deficits developing earlier in season.'
+    },
+    water:'Canterbury\'s irrigation-dependent agriculture dependent on Southern Alps snowpack — now declining. Aquifer recharge patterns shifting.',
+    agri:'Marlborough Sauvignon Blanc faces quality risk as temperatures rise. Canterbury wheat and seed crops affected by increasing summer drought.',
+    risks:['Alpine snowpack decline','Irrigation water scarcity','Wine quality degradation','Increased flood-drought cycling']
+  },
+  'Otago / Southland': {
+    bb:[-47,-43,167,172],
+    rcp26:{
+      2030:{t:'+0.8°C',h:'+4d',p:'-3% drier',s:'+7cm',w:'Low',x:'Low–Moderate',wf:'Low'},
+      2050:{t:'+1.1°C',h:'+7d',p:'-5% drier',s:'+12cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+    },
+    rcp85:{
+      2030:{t:'+1.0°C',h:'+5d',p:'-4% drier',s:'+9cm',w:'Low',x:'Moderate',wf:'Low'},
+      2050:{t:'+2.2°C',h:'+20d',p:'-12% drier',s:'+23cm',w:'Moderate',x:'High',wf:'Low–Moderate'}
+    },
+    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    sea:{
+      Summer:'Increased drought frequency in Central Otago. Irrigation demand grows.',
+      Autumn:'Fire risk in tussock grasslands elevated. Changed autumn conditions for viticulture.',
+      Winter:'Reduced snowfall at ski areas. Tourism disruption.',
+      Spring:'Earlier spring. Extended growing season — opportunity and challenge.'
+    },
+    water:'Clutha River flows and Lake Dunstan storage under increasing variability. Southland dairy dependent on reliable rainfall.',
+    agri:'Central Otago viticulture: warming extends growing season but summer drought stress increases. Southland dairy under rainfall reliability pressure.',
+    risks:['Ski industry viability','Central Otago drought','Tussock fire risk','Glacier retreat pace']
+  },
+  'West Coast NZ': {
+    bb:[-44,-41,168,172],
+    rcp26:{
+      2030:{t:'+0.8°C',h:'+2d',p:'+5% wetter',s:'+7cm',w:'Low',x:'Low',wf:'Low'},
+      2050:{t:'+1.1°C',h:'+4d',p:'+7% wetter',s:'+12cm',w:'Low',x:'Low–Moderate',wf:'Low'}
+    },
+    rcp85:{
+      2030:{t:'+1.0°C',h:'+3d',p:'+6% wetter',s:'+9cm',w:'Low',x:'Low–Moderate',wf:'Low'},
+      2050:{t:'+2.0°C',h:'+14d',p:'+12% wetter',s:'+23cm',w:'Low–Moderate',x:'Moderate',wf:'Low'}
+    },
+    conf:{t:'hi',h:'med',p:'med',s:'hi',w:'med',x:'med'},
+    sea:{
+      Summer:'Rainfall events more intense. Franz Josef and Fox glaciers retreat accelerates.',
+      Autumn:'Landslide and flooding risk from intense rain events.',
+      Winter:'Milder but wetter. Glacier retreat continues through warmer winters.',
+      Spring:'Earlier spring melt from reduced snowpack.'
+    },
+    water:'Abundant rainfall but increasing flash-flood risk. Infrastructure vulnerability elevated.',
+    agri:'Dairying on coastal flats faces flooding frequency increase.',
+    risks:['Glacier loss (tourism impact)','Landslide risk','Coastal flooding','Infrastructure isolation']
+  },
+  'Hawke\'s Bay / Gisborne': {
+    bb:[-40,-37,176,179],
+    rcp26:{
+      2030:{t:'+0.9°C',h:'+6d',p:'-5% drier',s:'+8cm',w:'Moderate',x:'Moderate',wf:'Low'},
+      2050:{t:'+1.2°C',h:'+10d',p:'-8% drier',s:'+13cm',w:'Moderate',x:'High',wf:'Low'}
+    },
+    rcp85:{
+      2030:{t:'+1.1°C',h:'+9d',p:'-7% drier',s:'+10cm',w:'Moderate',x:'High',wf:'Low–Moderate'},
+      2050:{t:'+2.3°C',h:'+26d',p:'-18% drier',s:'+26cm',w:'High',x:'Very High',wf:'Moderate'}
+    },
+    conf:{t:'hi',h:'hi',p:'hi',s:'hi',w:'hi',x:'med'},
+    sea:{
+      Summer:'Increasing drought and extreme heat. Cyclone Gabrielle (2023) type events more frequent.',
+      Autumn:'Extended dry. River low-flows. Orchard irrigation critical.',
+      Winter:'Milder and drier. Some chilling loss for deciduous orchards.',
+      Spring:'Early warm spell risk. Crop flowering disruption.'
+    },
+    water:'Heretaunga Plains aquifer under increasing pressure. River flows declining in summer.',
+    agri:'Apple, pear, and wine grape production exposed to drought and heat stress. Cyclone Gabrielle demonstrated catastrophic flood-damage potential.',
+    risks:['Cyclone-scale flooding (like 2023)','Summer drought','Orchard viability','River system depletion']
+  }
+};
+
+// ── Global fallback data (IPCC AR6 regions) ───────────
+const GLOBAL = {
+  'North America': {
+    2030:{rcp26:{t:'+1.3°C',h:'+8d',p:'Variable',s:'+8cm',w:'Moderate',x:'Moderate'},rcp85:{t:'+1.5°C',h:'+12d',p:'Variable',s:'+10cm',w:'Moderate',x:'High'}},
+    2050:{rcp26:{t:'+1.7°C',h:'+14d',p:'Variable',s:'+14cm',w:'High',x:'High'},rcp85:{t:'+3.0°C',h:'+35d',p:'Variable',s:'+28cm',w:'Very High',x:'Very High'}}
+  },
+  'Europe': {
+    2030:{rcp26:{t:'+1.2°C',h:'+7d',p:'-5% (south)',s:'+8cm',w:'Moderate',x:'Moderate'},rcp85:{t:'+1.4°C',h:'+10d',p:'-8% (south)',s:'+10cm',w:'Moderate',x:'High'}},
+    2050:{rcp26:{t:'+1.6°C',h:'+12d',p:'-10% (south)',s:'+13cm',w:'High',x:'High'},rcp85:{t:'+2.8°C',h:'+30d',p:'-20% (south)',s:'+26cm',w:'Very High',x:'Very High'}}
+  },
+  'East Asia': {
+    2030:{rcp26:{t:'+1.3°C',h:'+6d',p:'+3% wetter',s:'+8cm',w:'Low–Moderate',x:'High'},rcp85:{t:'+1.5°C',h:'+9d',p:'+5% wetter',s:'+10cm',w:'Moderate',x:'High'}},
+    2050:{rcp26:{t:'+1.7°C',h:'+11d',p:'+5% wetter',s:'+14cm',w:'Moderate',x:'High'},rcp85:{t:'+3.2°C',h:'+28d',p:'+10% wetter',s:'+28cm',w:'High',x:'Very High'}}
+  },
+  'South Asia': {
+    2030:{rcp26:{t:'+1.4°C',h:'+10d',p:'+4% wetter',s:'+8cm',w:'High',x:'High'},rcp85:{t:'+1.6°C',h:'+14d',p:'+6% wetter',s:'+10cm',w:'High',x:'Very High'}},
+    2050:{rcp26:{t:'+1.9°C',h:'+18d',p:'+7% wetter',s:'+14cm',w:'Very High',x:'Very High'},rcp85:{t:'+3.5°C',h:'+45d',p:'+12% wetter',s:'+29cm',w:'Very High',x:'Extreme'}}
+  },
+  'Africa': {
+    2030:{rcp26:{t:'+1.5°C',h:'+12d',p:'-6% drier',s:'+8cm',w:'High',x:'High'},rcp85:{t:'+1.8°C',h:'+18d',p:'-9% drier',s:'+10cm',w:'Very High',x:'Very High'}},
+    2050:{rcp26:{t:'+2.1°C',h:'+22d',p:'-10% drier',s:'+14cm',w:'Very High',x:'Very High'},rcp85:{t:'+4.0°C',h:'+55d',p:'-20% drier',s:'+29cm',w:'Extreme',x:'Extreme'}}
+  },
+  'Latin America': {
+    2030:{rcp26:{t:'+1.2°C',h:'+8d',p:'-4% drier',s:'+8cm',w:'Moderate',x:'High'},rcp85:{t:'+1.4°C',h:'+12d',p:'-6% drier',s:'+10cm',w:'High',x:'High'}},
+    2050:{rcp26:{t:'+1.6°C',h:'+14d',p:'-7% drier',s:'+14cm',w:'High',x:'Very High'},rcp85:{t:'+3.2°C',h:'+35d',p:'-15% drier',s:'+28cm',w:'Very High',x:'Extreme'}}
+  },
+  'Middle East': {
+    2030:{rcp26:{t:'+1.5°C',h:'+15d',p:'-8% drier',s:'+8cm',w:'Very High',x:'Very High'},rcp85:{t:'+1.8°C',h:'+22d',p:'-12% drier',s:'+10cm',w:'Very High',x:'Extreme'}},
+    2050:{rcp26:{t:'+2.1°C',h:'+26d',p:'-14% drier',s:'+14cm',w:'Very High',x:'Extreme'},rcp85:{t:'+4.5°C',h:'+65d',p:'-25% drier',s:'+29cm',w:'Extreme',x:'Extreme'}}
+  },
+  'Arctic': {
+    2030:{rcp26:{t:'+2.2°C',h:'+10d',p:'+12% wetter',s:'+8cm',w:'Low',x:'Moderate'},rcp85:{t:'+2.8°C',h:'+15d',p:'+18% wetter',s:'+10cm',w:'Low',x:'High'}},
+    2050:{rcp26:{t:'+2.8°C',h:'+16d',p:'+18% wetter',s:'+15cm',w:'Moderate',x:'High'},rcp85:{t:'+5.5°C',h:'+35d',p:'+35% wetter',s:'+28cm',w:'High',x:'Very High'}}
+  },
+  'Pacific Islands': {
+    2030:{rcp26:{t:'+0.9°C',h:'+4d',p:'Variable',s:'+10cm',w:'Very High',x:'Moderate'},rcp85:{t:'+1.1°C',h:'+6d',p:'Variable',s:'+12cm',w:'Very High',x:'High'}},
+    2050:{rcp26:{t:'+1.2°C',h:'+7d',p:'Variable',s:'+17cm',w:'Extreme',x:'High'},rcp85:{t:'+2.0°C',h:'+18d',p:'Variable',s:'+30cm',w:'Extreme',x:'Very High'}}
+  },
+  'Antarctica': {
+    2030:{rcp26:{t:'+1.0°C',h:'+0d',p:'+5% wetter',s:'+7cm',w:'Low',x:'Low'},rcp85:{t:'+1.2°C',h:'+0d',p:'+8% wetter',s:'+9cm',w:'Low',x:'Low'}},
+    2050:{rcp26:{t:'+1.4°C',h:'+0d',p:'+8% wetter',s:'+12cm',w:'Low',x:'Low'},rcp85:{t:'+2.5°C',h:'+2d',p:'+15% wetter',s:'+22cm',w:'Low–Moderate',x:'Low–Moderate'}}
+  }
+};
+
+// ── Transitional Risk data ────────────────────────────
+const TRDATA = {
+  // Industries
+  'Coal & Thermal Power': {cat:'Energy',urgency:95,risks:['Stranded asset risk as coal plants face early retirement','Carbon pricing erodes margins rapidly','Investor exodus and credit rating downgrades','Regulatory phase-out timelines tightening globally'],opp:'Workforce transition to renewables operations; site repurposing for solar/storage; skills transfer to clean energy sector',out2030:'Significant revenue decline as carbon pricing takes effect. Many plants face early retirement in OECD markets.',out2050:'Coal power effectively non-viable in most developed markets. Remaining capacity in emerging markets under extreme regulatory pressure.'},
+  'Oil & Gas Exploration': {cat:'Energy',urgency:80,risks:['Long-term demand peak risk for new exploration projects','Carbon budget alignment erodes value of reserves','Physical risk to offshore infrastructure from intensifying storms','Growing litigation risk for climate damages'],opp:'LNG as transition fuel; hydrogen production from natural gas with CCS; methane reduction technology leadership',out2030:'Continued profitability but capital allocation pressure intensifies. New exploration projects face longer payback periods.',out2050:'Structural demand decline in OECD markets. Asset stranding risk for long-life projects.'},
+  'Aviation': {cat:'Transport',urgency:72,risks:['Jet fuel costs increase with carbon pricing','Sustainable aviation fuel (SAF) supply chain immature','Reputational risk from high per-passenger emissions','Regulatory emissions caps on intra-EU/regional routes'],opp:'SAF investment and offtake agreements; fleet modernisation ROI; premium climate-conscious traveller segment',out2030:'Carbon costs material but manageable. SAF mandates require supply chain investment.',out2050:'SAF at scale essential for viability. Airlines without credible net-zero pathway face regulatory and market exclusion.'},
+  'Automotive (ICE)': {cat:'Transport',urgency:85,risks:['ICE phase-out legislation in 35+ countries','Residual value risk for ICE model portfolios','EV transition capital requirements enormous','Stranded manufacturing assets'],opp:'EV transition leadership; battery supply chain; software-defined vehicle capability',out2030:'ICE sales declining in key markets. EV transition capital deployment peak.',out2050:'ICE effectively non-viable in OECD markets. Residual markets in developing economies only.'},
+  'Steel & Cement': {cat:'Industry',urgency:68,risks:['Carbon border adjustment mechanisms (CBAM) increasing cost','Green steel/cement competitors gaining market share','Scope 3 customer pressure intensifying','High capital cost of decarbonisation'],opp:'Green hydrogen steelmaking; low-carbon cement; premium pricing for green products; government transition support',out2030:'CBAM costs material. Customer procurement requirements tightening.',out2050:'Green product premium normalises. Incumbents who did not transition face significant competitive disadvantage.'},
+  'Commercial Real Estate': {cat:'Real Estate',urgency:62,risks:['Stranded assets — buildings below minimum energy standards','Green lease requirements from institutional tenants','Physical risk from flood/heat','Regulatory minimum energy performance standards'],opp:'Green refurbishment value uplift; NABERS/LEED premium rents; ESG tenant attraction',out2030:'Minimum energy performance standards tightening in most jurisdictions. Brown discount emerging.',out2050:'High-performing green buildings command significant premium. Non-compliant stock faces stranding.'},
+  'Agriculture (Conventional)': {cat:'Food & Land',urgency:58,risks:['Carbon cost on livestock emissions','Water access restrictions','Changing growing season viability','Consumer preference shift to low-emissions protein'],opp:'Regenerative agriculture premium; carbon farming income; alternative protein transition',out2030:'Carbon pricing on agriculture begins in more jurisdictions. Water access rules tighten.',out2050:'Significant structural adjustment. High-emission production systems face viability questions.'},
+  'Insurance': {cat:'Financial',urgency:70,risks:['Premium adequacy failing in high-risk markets (Florida, Northern Australia)','Portfolio concentration risk in climate-exposed assets','Regulatory solvency requirements tightening','Physical risk modelling inadequacy'],opp:'Climate risk advisory services; parametric insurance products; ESG underwriting leadership',out2030:'Market withdrawal from highest-risk regions accelerating. Regulatory scrutiny intensifying.',out2050:'Insurance gap in many high-risk regions unless product innovation matches exposure.'},
+  'Banking & Finance': {cat:'Financial',urgency:60,risks:['Transition risk in loan portfolios','Physical risk to collateral values','Regulatory climate stress testing requirements','Litigation risk from financing fossil fuel expansion'],opp:'Green finance product suite; sustainability-linked lending; ESG advisory leadership',out2030:'Climate stress testing mandatory in most OECD markets. Green taxonomy compliance required.',out2050:'Climate risk fully integrated in credit decisions. Portfolio alignment with Paris pathways expected.'},
+  'Tourism & Hospitality': {cat:'Services',urgency:55,risks:['Seasonal disruption (ski, reef, coastal)','Extreme weather events damage infrastructure and reduce visitor appeal','Reputational risk of high-carbon operations','Long-haul aviation under carbon pressure'],opp:'Nature-based and wellness tourism growth; domestic tourism substitution; sustainability certification premium',out2030:'High-risk tourism assets (ski, reef) face revenue volatility.',out2050:'Significant restructuring of tourism products in climate-affected destinations.'},
+  'Retail (Fast Fashion)': {cat:'Services',urgency:50,risks:['Scope 3 supply chain emissions disclosure requirements','Consumer ESG preferences shifting','Extended producer responsibility legislation','Cotton supply disruption from climate extremes'],opp:'Circular economy business models; sustainable material premiums; resale and rental growth',out2030:'Extended producer responsibility in EU and other markets.',out2050:'Fast fashion model under regulatory and consumer pressure globally.'},
+  'Technology & Data Centres': {cat:'Technology',urgency:40,risks:['Scope 2 electricity emissions at scale','Physical risk of data centres in hot/water-stressed locations','Regulatory disclosure and energy standards','AI compute energy demand escalating rapidly'],opp:'Renewable energy procurement leadership; liquid cooling technology; efficiency gains; AI for climate solutions',out2030:'100% renewable electricity expected by major cloud providers. Cooling efficiency standards tightening.',out2050:'Energy efficiency and renewable sourcing standard operating requirement.'},
+  // Personal
+  'Homeowner (coastal)': {cat:'Personal',urgency:82,risks:['Flood insurance unavailability or unaffordability','Property value decline from physical risk disclosure','Coastal erosion and storm surge events','Mortgage serviceability risk if unable to insure'],opp:'Early adaptation investment; property hardening; flood risk disclosure before purchase',out2030:'Insurance market withdrawal from highest-risk coastal areas beginning.',out2050:'Significant property value impacts in high-risk coastal zones. Managed retreat may be only viable option.'},
+  'Superannuation / Pension Investor': {cat:'Personal',urgency:58,risks:['Stranded asset exposure in fossil fuel holdings','Physical risk to real assets in portfolio','Regulatory fiduciary duty to consider climate risk','Long duration of liability — decades of climate change locked in'],opp:'Climate-aligned portfolio construction; fossil fuel divestment; green infrastructure investment',out2030:'Climate risk disclosure mandatory. Fossil fuel exposure scrutinised.',out2050:'Net-zero aligned portfolios likely required by regulation.'},
+  'Career in Fossil Fuels': {cat:'Personal',urgency:75,risks:['Structural employment decline as industry contracts','Geographic concentration of affected workers','Skills transferability varies significantly','Pension fund exposure to stranded assets'],opp:'Skills audit and reskilling pathway (electrical, civil, environmental engineering); renewable sector recruitment',out2030:'Employment decline in coal most acute. Oil & gas employment more gradual but trend clear.',out2050:'Fossil fuel employment a fraction of current levels in OECD.'},
+  'Agricultural Landholder': {cat:'Personal',urgency:65,risks:['Water access restrictions and licence changes','Heat and drought impact on productivity','Carbon pricing on livestock and fertiliser','Land value risk in high-exposure regions'],opp:'Carbon farming income stream; diversification; stewardship payments; agtech adoption',out2030:'Carbon farming income maturing. Water licence reform continuing.',out2050:'Significant structural adjustment. Early movers in low-emission and diversified farming best positioned.'},
+  'SME Business Owner': {cat:'Personal',urgency:48,risks:['Supply chain disruption from climate events','Customer ESG procurement requirements','Energy cost exposure','Physical risk to premises'],opp:'Energy efficiency ROI; ESG supply chain positioning; business continuity planning',out2030:'Customer sustainability requirements increasing for SME suppliers.',out2050:'SMEs without ESG credentials face procurement exclusion from larger company supply chains.'},
+  'Mortgage Holder (Bushfire Zone)': {cat:'Personal',urgency:78,risks:['Insurance premium increases or withdrawal','Property value risk','Mortgage serviceability risk','Mental health and wellbeing impacts of living with risk'],opp:'Property hardening investment; vegetation management; community early warning systems; relocation planning',out2030:'Bushfire risk scoring increasingly influencing property valuation and insurance pricing.',out2050:'Some high-risk areas may become effectively uninsurable.'},
+  'Skilled Migrant Worker': {cat:'Personal',urgency:35,risks:['Climate-driven job loss in high-emission sectors','Visa pathway dependencies on industry conditions','Origin country climate vulnerability','Social cohesion challenges in climate migration scenarios'],opp:'Green skills advantage; climate adaptation sector growth; remote work flexibility reducing geographic lock-in',out2030:'Green skills advantage growing in job market.',out2050:'Climate-driven migration will reshape labour markets — skilled climate-related roles in demand.'},
+  'Student / Early Career': {cat:'Personal',urgency:30,risks:['Exposure to climate-vulnerable industries in career choice','Student debt in sunset industry careers','Long-term physical risk exposure over career lifetime','Policy uncertainty affecting long-term planning'],opp:'Green economy career pathways growing rapidly; climate literacy as core professional skill; impact career premium',out2030:'Green economy jobs fastest-growing segment.',out2050:'Climate competency standard professional requirement across most industries.'}
+};
+
+// ── Region detection ──────────────────────────────────
+function detectRegion(lat, lng) {
+  // AUS check
+  for(const [name, r] of Object.entries(AUS)) {
+    const [minLat,maxLat,minLng,maxLng] = r.bb;
+    if(lat>=minLat && lat<=maxLat && lng>=minLng && lng<=maxLng) return {type:'aus',name,data:r};
+  }
+  // NZ check
+  for(const [name, r] of Object.entries(NZ)) {
+    const [minLat,maxLat,minLng,maxLng] = r.bb;
+    if(lat>=minLat && lat<=maxLat && lng>=minLng && lng<=maxLng) return {type:'nz',name,data:r};
+  }
+  return null;
+}
+
+function detectGlobal(lat, lng) {
+  if(lat>60) return lat>80 ? 'Antarctica' : 'Arctic';
+  if(lat < -60) return 'Antarctica';
+  if(lng > 100 && lat > 0 && lat < 55) return 'East Asia';
+  if(lng > 60 && lng < 100 && lat > 0 && lat < 40) return 'South Asia';
+  if(lng > -30 && lng < 60 && lat > 0) return 'Europe';
+  if(lng > -30 && lng < 60 && lat <= 0) return 'Africa';
+  if(lng > -170 && lng < -30 && lat > 0) return 'North America';
+  if(lng > -90 && lng < -30 && lat <= 0) return 'Latin America';
+  if(lng > 30 && lng < 70 && lat > 5 && lat < 40) return 'Middle East';
+  if(lng > 130 || (lng < -120 && lat < 30)) return 'Pacific Islands';
+  return 'Pacific Islands';
+}
+
+// ── Select location ───────────────────────────────────
+function select(lat, lng, label) {
+  marker.setLngLat([lng, lat]);
+  marker.getElement().style.display = 'block';
+  map.flyTo({center:[lng,lat], zoom:5.5, duration:800});
+
+  const region = detectRegion(lat, lng);
+  if(region) {
+    curRegion = region;
+    curGlobal = null;
+    renderDetail(region);
+  } else {
+    curRegion = null;
+    const gname = detectGlobal(lat, lng);
+    curGlobal = {name: gname || 'Global', lat, lng, label};
+    renderGlobal(lat, lng, label || gname || 'Selected Location');
+  }
+  document.getElementById('prompt-state').style.display = 'none';
+  document.getElementById('detail-state').style.display = 'block';
+}
+
+// ── Render AUS/NZ detail ──────────────────────────────
+function renderDetail(region) {
+  const d = region.data;
+  const sc = activeScen;
+  const yr = parseInt(activeYr);
+  const dat = d[sc][yr];
+  const conf = d.conf;
+
+  const confBadge = (k) => {
+    const v = conf[k] || 'med';
+    return `<span class="conf-badge ${v}">${v==='hi'?'High Conf':v==='med'?'Med Conf':'Low Conf'}</span>`;
+  };
+
+  const barW = (val) => {
+    const n = parseFloat(val);
+    if(isNaN(n)) return 40;
+    return Math.min(Math.abs(n) * 8, 100);
+  };
+  const barColor = (val) => {
+    const n = parseFloat(val);
+    if(isNaN(n)) return 'var(--warn)';
+    return n > 0 ? 'var(--bad)' : 'var(--ok)';
+  };
+
+  const riskLevel = (val) => {
+    const v = (val||'').toLowerCase();
+    if(v.includes('very high') || v.includes('extreme')) return 'hi';
+    if(v.includes('high')) return 'hi';
+    if(v.includes('moderate') || v.includes('medium')) return 'md';
+    return 'lo';
+  };
+
+  let html = `
+    <div class="loc-head">
+      <div class="loc-coords">${region.type.toUpperCase()} Region</div>
+      <div class="loc-name">${region.name}</div>
+      <div class="loc-sub">${region.type === 'aus' ? 'Australia' : 'New Zealand'} · CSIRO/BOM regional assessment</div>
+    </div>
+
+    <div class="sec-label">Emission Scenarios</div>
+    <div class="tab-strip">
+      <div class="tab rcp26 ${sc==='rcp26'?'active':''}" onclick="switchScen('rcp26')">
+        <div class="tab-label">RCP 2.6</div>
+        <div class="tab-sub">Rapid decarbonisation ~1.5–2°C</div>
+      </div>
+      <div class="tab rcp85 ${sc==='rcp85'?'active':''}" onclick="switchScen('rcp85')">
+        <div class="tab-label">RCP 8.5</div>
+        <div class="tab-sub">Business as usual 4°C+</div>
+      </div>
+    </div>
+    <div class="yr-tabs">
+      <div class="tab yr ${activeYr==='2030'?'active':''}" onclick="switchYr('2030')">2030</div>
+      <div class="tab yr ${activeYr==='2050'?'active':''}" onclick="switchYr('2050')">2050</div>
+    </div>
+
+    <div class="sec-label">Climate Metrics · ${activeYr}</div>
+    <div class="metric-list">
+      <div class="metric-item">
+        <div class="metric-name">🌡 Temperature Change ${confBadge('t')}</div>
+        <div class="metric-val">${dat.t}</div>
+        <div class="metric-bar-wrap"><div class="metric-bar" style="width:${barW(dat.t)}%;background:${barColor(dat.t)}"></div></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">☀️ Extra Extreme Heat Days/yr ${confBadge('h')}</div>
+        <div class="metric-val">${dat.h}</div>
+        <div class="metric-bar-wrap"><div class="metric-bar" style="width:${Math.min(parseInt(dat.h)*2.5,100)}%;background:var(--bad)"></div></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">🌧 Precipitation Change ${confBadge('p')}</div>
+        <div class="metric-val">${dat.p}</div>
+        <div class="metric-bar-wrap"><div class="metric-bar" style="width:${barW(dat.p)}%;background:${dat.p.includes('wetter')?'var(--ok)':'var(--warn)'}"></div></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">🌊 Sea Level Rise ${confBadge('s')}</div>
+        <div class="metric-val">${dat.s}</div>
+        <div class="metric-bar-wrap"><div class="metric-bar" style="width:${Math.min(parseInt(dat.s)*3,100)}%;background:var(--accent)"></div></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">🔥 Wildfire Risk ${confBadge('w')}</div>
+        <div class="metric-val"><span class="risk-tag ${riskLevel(dat.w)}">${dat.w}</span></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">⚡ Extreme Weather ${confBadge('x')}</div>
+        <div class="metric-val"><span class="risk-tag ${riskLevel(dat.x)}">${dat.x}</span></div>
+      </div>
+    </div>
+  `;
+
+  // Seasonal
+  if(d.sea) {
+    html += `
+    <div class="sec-label">Seasonal Outlook</div>
+    <div class="card" style="margin-bottom:10px">
+      <div class="season-grid">
+        ${['Summer','Autumn','Winter','Spring'].map(s=>`
+          <div class="season-cell">
+            <div class="slabel">${s}</div>
+            <p>${d.sea[s]}</p>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    `;
+  }
+
+  // Water & Agri
+  if(d.water) {
+    html += `
+    <div class="card">
+      <div class="card-head">💧 Water Security</div>
+      <div class="card-body"><p>${d.water}</p></div>
+    </div>
+    `;
+  }
+  if(d.agri) {
+    html += `
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-head">🌾 Agriculture</div>
+      <div class="card-body"><p>${d.agri}</p></div>
+    </div>
+    `;
+  }
+
+  // Key risks
+  if(d.risks && d.risks.length) {
+    html += `<div class="sec-label">Key Risks</div>`;
+    html += `<div style="padding:0 20px 10px;display:flex;flex-wrap:wrap;gap:6px">`;
+    d.risks.forEach(r => { html += `<span class="risk-tag hi">${r}</span>`; });
+    html += `</div>`;
+  }
+
+  // Transitional Risk
+  html += renderTRSection();
+  html += `<div class="disclaimer">⚠ Projections are derived from CSIRO, BOM and NIWA regional assessments and represent ensemble medians. Local conditions may vary. Not for engineering or policy decisions without site-specific assessment.</div>`;
+
+  document.getElementById('detail-state').innerHTML = html;
+  initTR();
+}
+
+// ── Render global fallback ────────────────────────────
+function renderGlobal(lat, lng, label) {
+  const gname = curGlobal ? curGlobal.name : detectGlobal(lat, lng);
+  const gd = GLOBAL[gname] || GLOBAL['Pacific Islands'];
+  const sc = activeScen;
+  const yr = parseInt(activeYr);
+  const dat = gd[yr][sc];
+
+  const riskLevel = (val) => {
+    const v = (val||'').toLowerCase();
+    if(v.includes('very high') || v.includes('extreme')) return 'hi';
+    if(v.includes('high')) return 'hi';
+    if(v.includes('moderate')) return 'md';
+    return 'lo';
+  };
+
+  let html = `
+    <div class="loc-head">
+      <div class="loc-coords">${lat.toFixed(2)}°, ${lng.toFixed(2)}°</div>
+      <div class="loc-name">${label || gname}</div>
+      <div class="loc-sub">IPCC AR6 Regional Assessment · ${gname}</div>
+    </div>
+
+    <div class="sec-label">Emission Scenarios</div>
+    <div class="tab-strip">
+      <div class="tab rcp26 ${sc==='rcp26'?'active':''}" onclick="switchScen('rcp26')">
+        <div class="tab-label">RCP 2.6</div>
+        <div class="tab-sub">Rapid decarbonisation</div>
+      </div>
+      <div class="tab rcp85 ${sc==='rcp85'?'active':''}" onclick="switchScen('rcp85')">
+        <div class="tab-label">RCP 8.5</div>
+        <div class="tab-sub">Business as usual</div>
+      </div>
+    </div>
+    <div class="yr-tabs">
+      <div class="tab yr ${activeYr==='2030'?'active':''}" onclick="switchYr('2030')">2030</div>
+      <div class="tab yr ${activeYr==='2050'?'active':''}" onclick="switchYr('2050')">2050</div>
+    </div>
+
+    <div class="sec-label">Climate Metrics · ${activeYr}</div>
+    <div class="metric-list">
+      <div class="metric-item">
+        <div class="metric-name">🌡 Temperature Change</div>
+        <div class="metric-val">${dat.t}</div>
+        <div class="metric-bar-wrap"><div class="metric-bar" style="width:${Math.min(parseFloat(dat.t)*22,100)}%;background:var(--bad)"></div></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">☀️ Extra Extreme Heat Days/yr</div>
+        <div class="metric-val">${dat.h}</div>
+        <div class="metric-bar-wrap"><div class="metric-bar" style="width:${Math.min(parseInt(dat.h)*1.5,100)}%;background:var(--warn)"></div></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">🌧 Precipitation Change</div>
+        <div class="metric-val">${dat.p}</div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">🌊 Sea Level Rise</div>
+        <div class="metric-val">${dat.s}</div>
+        <div class="metric-bar-wrap"><div class="metric-bar" style="width:${Math.min(parseInt(dat.s)*3,100)}%;background:var(--accent)"></div></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">💧 Water Stress</div>
+        <div class="metric-val"><span class="risk-tag ${riskLevel(dat.w)}">${dat.w}</span></div>
+      </div>
+      <div class="metric-item">
+        <div class="metric-name">⚡ Extreme Weather</div>
+        <div class="metric-val"><span class="risk-tag ${riskLevel(dat.x)}">${dat.x}</span></div>
+      </div>
+    </div>
+  `;
+
+  html += renderTRSection();
+  html += `<div class="disclaimer">⚠ Projections based on IPCC AR6 regional assessments. For location-specific detail in Australia and New Zealand, click within those regions. Not for engineering or policy decisions.</div>`;
+
+  document.getElementById('detail-state').innerHTML = html;
+  initTR();
+}
+
+// ── Transitional Risk section ─────────────────────────
+function renderTRSection() {
+  const cats = [...new Set(Object.values(TRDATA).map(v=>v.cat))];
+  let opts = '';
+  cats.forEach(cat => {
+    opts += `<optgroup label="${cat}">`;
+    Object.entries(TRDATA).filter(([,v])=>v.cat===cat).forEach(([name])=>{
+      opts += `<option value="${name}">${name}</option>`;
+    });
+    opts += `</optgroup>`;
+  });
+
+  return `
+    <div class="sec-label">Transitional Climate Risk</div>
+    <div class="tr-wrap">
+      <select class="tr-select" id="tr-select" onchange="renderTR()">
+        ${opts}
+      </select>
+      <div id="tr-content"></div>
+    </div>
+  `;
+}
+
+function initTR() {
+  const sel = document.getElementById('tr-select');
+  if(sel) renderTR();
+}
+
+function renderTR() {
+  const sel = document.getElementById('tr-select');
+  if(!sel) return;
+  const name = sel.value;
+  const d = TRDATA[name];
+  if(!d) return;
+
+  const pct = d.urgency;
+  const icons = ['⚡','🏦','📉','🔥'];
+  const urgLabel = pct >= 80 ? 'Very High' : pct >= 60 ? 'High' : pct >= 40 ? 'Moderate' : 'Low';
+
+  let html = `
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:.75rem;color:var(--muted)">${d.cat}</span>
+        <span class="risk-tag ${pct>=70?'hi':pct>=40?'md':'lo'}">${urgLabel} transition urgency</span>
+      </div>
+      <div class="urgency-bar">
+        <div class="urgency-pin" style="left:${pct}%"></div>
+      </div>
+      <div class="urgency-label"><span>Low</span><span>Moderate</span><span>High</span><span>Very High</span></div>
+    </div>
+    <div class="tr-cards">
+      ${d.risks.slice(0,4).map((r,i)=>`
+        <div class="tr-card">
+          <div class="tr-card-icon">${icons[i]||'⚠'}</div>
+          <div class="tr-card-title">Risk ${i+1}</div>
+          <div class="tr-card-body">${r}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="opp-panel">
+      <div class="opp-label">📈 Opportunity</div>
+      <p>${d.opp}</p>
+    </div>
+    <div class="sec-label" style="padding-left:0;margin-top:12px">Outlook</div>
+    <div class="card" style="margin:0 0 12px">
+      <div class="outlook-grid">
+        <div class="outlook-cell">
+          <div class="yr">2030</div>
+          <p>${d.out2030}</p>
+        </div>
+        <div class="outlook-cell">
+          <div class="yr">2050</div>
+          <p>${d.out2050}</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('tr-content').innerHTML = html;
+}
+
+// ── Tab switching ─────────────────────────────────────
+function switchScen(sc) {
+  activeScen = sc;
+  if(curRegion) renderDetail(curRegion);
+  else if(curGlobal) renderGlobal(curGlobal.lat, curGlobal.lng, curGlobal.label);
+}
+
+function switchYr(yr) {
+  activeYr = yr;
+  if(curRegion) renderDetail(curRegion);
+  else if(curGlobal) renderGlobal(curGlobal.lat, curGlobal.lng, curGlobal.label);
+}
+
+// ── Geocoding search ──────────────────────────────────
+document.getElementById('search-btn').addEventListener('click', doSearch);
+document.getElementById('search-input').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
+
+async function doSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  if(!q) return;
+  const btn = document.getElementById('search-btn');
+  btn.textContent = '…';
+  btn.disabled = true;
+  try {
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${mapboxgl.accessToken}&limit=1`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if(data.features && data.features.length > 0) {
+      const f = data.features[0];
+      const [lng, lat] = f.center;
+      select(lat, lng, f.place_name);
+    } else {
+      alert('Location not found. Try a different search.');
+    }
+  } catch(e) {
+    alert('Search error. Please try again.');
+  }
+  btn.textContent = 'Search';
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
