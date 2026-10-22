@@ -6,8 +6,8 @@
 <title>Climate Impact Explorer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
-<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" crossorigin="anonymous"/>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js" crossorigin="anonymous"></script>
 <style>
 /* ── OENVC design tokens ────────────────────────────── */
 :root {
@@ -287,8 +287,8 @@ body{font-family:var(--f-body);font-size:14px;color:var(--ink);background:var(--
 }
 
 /* ── Map ─────────────────────────────────────────────── */
-.map-wrap{position:relative;overflow:hidden}
-#map{width:100%;height:100%}
+.map-wrap{position:relative;overflow:hidden;background:var(--soft)}
+#map{position:absolute;top:0;left:0;width:100%;height:100%}
 
 .map-hint{
   position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
@@ -397,6 +397,10 @@ map.on('load', () => {
   map.resize();
 });
 
+// Retry resize to ensure map fills container after fonts/layout settle
+[100, 300, 600, 1200].forEach(ms => setTimeout(() => map.resize(), ms));
+window.addEventListener('resize', () => map.resize());
+
 // Blue dot marker
 const el = document.createElement('div');
 el.style.cssText = 'width:14px;height:14px;background:#1F5F8B;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 3px rgba(31,95,139,.3)';
@@ -404,9 +408,6 @@ const marker = new mapboxgl.Marker(el).setLngLat([134,-25]).addTo(map);
 marker.getElement().style.display='none';
 
 map.on('click', e => select(e.lngLat.lat, e.lngLat.lng, null));
-
-setTimeout(() => map.resize(), 500);
-window.addEventListener('resize', () => map.resize());
 
 // ── State ─────────────────────────────────────────────
 let activeScen = 'rcp85', activeYr = '2050', curRegion = null, curGlobal = null;
