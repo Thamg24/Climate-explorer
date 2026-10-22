@@ -375,6 +375,7 @@ mapboxgl.accessToken = 'pk.eyJ1IjoidGhhbWciLCJhIjoiY21vbWZoZ2E3MG51czJ3b2w0ZjE0e
 
 // ── Theme ─────────────────────────────────────────────
 let darkMode = window.matchMedia('(prefers-color-scheme:dark)').matches;
+let map; // declared first so applyTheme guard works
 function applyTheme(){
   document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
   document.getElementById('theme-btn').textContent = darkMode ? '☀' : '🌙';
@@ -384,7 +385,7 @@ document.getElementById('theme-btn').addEventListener('click', () => { darkMode 
 applyTheme();
 
 // ── Map init ──────────────────────────────────────────
-const map = new mapboxgl.Map({
+map = new mapboxgl.Map({
   container: 'map',
   style: darkMode ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/light-v11',
   center: [134, -25],
